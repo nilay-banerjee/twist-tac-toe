@@ -6,7 +6,7 @@ import { GameManager } from "./GameManager";
 import cors from "cors";
 
 const PORT = Number(process.env.PORT) || 8080;
-const BACKEND_URL = process.env.BACKEND_URL || "http//localhost";
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost";
 
 const gameManager = new GameManager();
 
