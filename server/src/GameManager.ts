@@ -1,6 +1,12 @@
 import { Server, Socket } from "socket.io";
 import { Game } from "./Game";
 import { User } from "./User";
+import {
+  JoinGamePayload,
+  joinGameSchema,
+  UsernamePayload,
+  usernameSchema,
+} from "./validators";
 
 export class GameManager {
   private server: Server;
@@ -47,14 +53,24 @@ export class GameManager {
       }
       console.log(`${client.id} Disconnected\n`);
     });
-    client.on("createGame", (data) => this.createGameHandler(data, client));
-    client.on("joinGame", (data) => this.joinGameHandler(data, client));
-    client.on("joinRandomGame", (data) =>
-      this.joinRandomGameHandler(data, client)
-    );
+    client.on("createGame", (data) => {
+      const payload = usernameSchema.safeParse(data);
+      if (!payload.success) return;
+      this.createGameHandler(payload.data, client);
+    });
+    client.on("joinGame", (data) => {
+      const payload = joinGameSchema.safeParse(data);
+      if (!payload.success) return;
+      this.joinGameHandler(payload.data, client);
+    });
+    client.on("joinRandomGame", (data) => {
+      const payload = usernameSchema.safeParse(data);
+      if (!payload.success) return;
+      this.joinRandomGameHandler(payload.data, client);
+    });
   }
 
-  joinRandomGameHandler(data: { username: string }, client: Socket) {
+  joinRandomGameHandler(data: UsernamePayload, client: Socket) {
     if (this.randomPlayerWaiting.id === client.id) {
       this.server.to(this.randomPlayerWaiting.gameId).emit("gameJoined", {
         username: this.randomPlayerWaiting.username,
@@ -124,7 +140,7 @@ export class GameManager {
       });
     }
   }
-  createGameHandler(data: { username: string }, client: Socket) {
+  createGameHandler(data: UsernamePayload, client: Socket) {
     let pendingPlayer = this.pendingPlayers.find(
       (player) => player.id === client.id
     );
@@ -153,8 +169,9 @@ export class GameManager {
     this.rooms.push(gameId);
   }
 
-  joinGameHandler(data: { gameId: string; username: string }, client: Socket) {
-    const { gameId, username = "NooBIE" } = data;
+  joinGameHandler(data: JoinGamePayload, client: Socket) {
+    const { gameId } = data;
+    const username = data.username || "NooBIE";
 
     if (this.rooms.includes(gameId)) {
       const player = new User(client, username, gameId, client.id);

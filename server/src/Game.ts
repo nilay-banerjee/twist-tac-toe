@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import { User } from "./User";
 import { removeGame } from ".";
+import { MovePayload, moveSchema } from "./validators";
 const TIMEOUT_DURATION = 15;
 export class Game {
   server: Server;
@@ -108,7 +109,9 @@ export class Game {
   gameHandler() {
     try {
       this.player1.client.on("move", (data, callback) => {
-        if (this.moveHandler(data, this.player1)) {
+        const payload = moveSchema.safeParse(data);
+        if (!payload.success) return;
+        if (this.moveHandler(payload.data, this.player1)) {
           try {
             callback({ message: "Move Successful", status: 200 });
           } catch (e) {
@@ -117,7 +120,9 @@ export class Game {
         }
       });
       this.player2.client.on("move", (data, callback) => {
-        if (this.moveHandler(data, this.player2)) {
+        const payload = moveSchema.safeParse(data);
+        if (!payload.success) return;
+        if (this.moveHandler(payload.data, this.player2)) {
           try {
             callback({ message: "Move Successful", status: 200 });
           } catch (e) {
@@ -170,16 +175,7 @@ export class Game {
 
   isValid(player: User, move: string) {
     console.log("isV Move", move);
-    if (
-      !move ||
-      move.length !== 1 ||
-      Number(move) < 0 ||
-      Number(move) > 8 ||
-      !(
-        this.board[Number(move)] === undefined ||
-        this.board[Number(move)] === ""
-      )
-    ) {
+    if (this.board[Number(move)]) {
       try {
         this.server
           .to(player.client.id)
@@ -204,7 +200,7 @@ export class Game {
     }
   }
 
-  initMove(data: { move: string }, player: User) {
+  initMove(data: MovePayload, player: User) {
     const move = Number(data.move);
     if (player.sign === "X") {
       if (this.queueX.length === 3) {
@@ -241,7 +237,7 @@ export class Game {
     }
     this.checkWin();
   }
-  moveHandler(data: { move: string }, player: User) {
+  moveHandler(data: MovePayload, player: User) {
     if (!player) return;
     if (this.isTurn(player)) {
       if (this.isValid(player, data.move)) {
