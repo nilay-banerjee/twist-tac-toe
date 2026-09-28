@@ -45,10 +45,10 @@ export class GameManager {
   handleConnection(server: Server, client: Socket) {
     this.server = server;
     client.on("disconnect", () => {
-      this.rooms = this.rooms.filter(
-        (room) => room !== this.randomPlayerWaiting.gameId
-      );
       if (this.randomPlayerWaiting.id === client.id) {
+        this.rooms = this.rooms.filter(
+          (room) => room !== this.randomPlayerWaiting.gameId
+        );
         this.randomPlayerWaiting = {} as User;
       }
       console.log(`${client.id} Disconnected\n`);
