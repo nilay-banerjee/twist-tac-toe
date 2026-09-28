@@ -172,44 +172,43 @@ export class GameManager {
   joinGameHandler(data: JoinGamePayload, client: Socket) {
     const { gameId } = data;
     const username = data.username || "NooBIE";
+    const pendingPlayer =
+      this.randomPlayerWaiting.gameId === gameId
+        ? this.randomPlayerWaiting
+        : this.pendingPlayers.find((player) => player.gameId === gameId);
 
-    if (this.rooms.includes(gameId)) {
-      const player = new User(client, username, gameId, client.id);
-      player.client.join(gameId);
-      this.server.to(gameId).emit("gameJoined", {
-        username,
-        id: player.id,
-        gameId,
-        message: "Another Player Joined!",
-        playersJoined: 2,
-      });
-      let pendingPlayer = this.pendingPlayers.find(
-        (player) => player.gameId === gameId
-      );
-      if (gameId === this.randomPlayerWaiting.gameId) {
-        pendingPlayer = this.randomPlayerWaiting;
-      }
-      if (!pendingPlayer) {
-        client.emit("error", {
-          message: "Player not Found",
-          errorCode: "404",
-        });
-        return;
-      }
-      const game = new Game(this.server, gameId, pendingPlayer, player);
-      this.games.push(game);
-      game.gameHandler();
-      this.pendingPlayers = this.pendingPlayers.filter(
-        (player) => player.gameId !== gameId
-      );
-      if (this.randomPlayerWaiting.gameId === gameId) {
-        this.randomPlayerWaiting = {} as User;
-      }
-    } else {
+    if (!pendingPlayer) {
       client.emit("error", {
         message: "Game ID not Found",
         errorCode: "404",
       });
+      return;
+    }
+    if (pendingPlayer.id === client.id) {
+      client.emit("error", {
+        message: "Cannot Join Your Own Game",
+        errorCode: "400",
+      });
+      return;
+    }
+
+    const player = new User(client, username, gameId, client.id);
+    player.client.join(gameId);
+    this.server.to(gameId).emit("gameJoined", {
+      username,
+      id: player.id,
+      gameId,
+      message: "Another Player Joined!",
+      playersJoined: 2,
+    });
+    const game = new Game(this.server, gameId, pendingPlayer, player);
+    this.games.push(game);
+    game.gameHandler();
+    this.pendingPlayers = this.pendingPlayers.filter(
+      (player) => player.gameId !== gameId
+    );
+    if (this.randomPlayerWaiting.gameId === gameId) {
+      this.randomPlayerWaiting = {} as User;
     }
   }
   closeGame(data: { gameId: string }) {
