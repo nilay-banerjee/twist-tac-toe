@@ -1,10 +1,12 @@
-import { REGEXP_ONLY_DIGITS_AND_CHARS } from "input-otp"
+import { GAME_ID_ALPHABET, GAME_ID_LENGTH } from "../../../common/constants"
 import {
     InputOTP,
     InputOTPGroup,
     InputOTPSeparator,
     InputOTPSlot,
 } from "./ui/input-otp"
+
+const CODE_PATTERN = `^[${GAME_ID_ALPHABET}${GAME_ID_ALPHABET.toLowerCase()}]+$`
 
 export function InputCodePattern({
     setCode,
@@ -16,8 +18,8 @@ export function InputCodePattern({
     return (
         <InputOTP
             value={value}
-            maxLength={6}
-            pattern={REGEXP_ONLY_DIGITS_AND_CHARS}
+            maxLength={GAME_ID_LENGTH}
+            pattern={CODE_PATTERN}
             onChange={(value) => setCode(value)}
         >
             <InputOTPGroup>
