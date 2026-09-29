@@ -1,22 +1,18 @@
-import { Server, Socket } from "socket.io";
+import { JoinGamePayload, UsernamePayload } from "../../common/types";
 import { Game } from "./Game";
+import { GameServer, GameSocket } from "./types";
 import { User } from "./User";
-import {
-  JoinGamePayload,
-  joinGameSchema,
-  UsernamePayload,
-  usernameSchema,
-} from "./validators";
+import { joinGameSchema, usernameSchema } from "./validators";
 
 export class GameManager {
-  private server: Server;
+  private server: GameServer;
   private randomPlayerWaiting: User;
   private pendingPlayers: User[];
   private games: Game[];
   private rooms: string[];
   constructor() {
     this.randomPlayerWaiting = {} as User;
-    this.server = {} as Server;
+    this.server = {} as GameServer;
     this.pendingPlayers = [];
     this.games = [];
     this.rooms = [];
@@ -42,7 +38,7 @@ export class GameManager {
     return gameId;
   }
 
-  handleConnection(server: Server, client: Socket) {
+  handleConnection(server: GameServer, client: GameSocket) {
     this.server = server;
     client.on("disconnect", () => {
       if (this.randomPlayerWaiting.id === client.id) {
@@ -60,24 +56,24 @@ export class GameManager {
         .forEach((game) => game.playerLeft(client.id));
       console.log(`${client.id} Disconnected\n`);
     });
-    client.on("createGame", (data) => {
+    client.on("createGame", (data: unknown) => {
       const payload = usernameSchema.safeParse(data);
       if (!payload.success) return;
       this.createGameHandler(payload.data, client);
     });
-    client.on("joinGame", (data) => {
+    client.on("joinGame", (data: unknown) => {
       const payload = joinGameSchema.safeParse(data);
       if (!payload.success) return;
       this.joinGameHandler(payload.data, client);
     });
-    client.on("joinRandomGame", (data) => {
+    client.on("joinRandomGame", (data: unknown) => {
       const payload = usernameSchema.safeParse(data);
       if (!payload.success) return;
       this.joinRandomGameHandler(payload.data, client);
     });
   }
 
-  joinRandomGameHandler(data: UsernamePayload, client: Socket) {
+  joinRandomGameHandler(data: UsernamePayload, client: GameSocket) {
     if (this.randomPlayerWaiting.id === client.id) {
       this.server.to(this.randomPlayerWaiting.gameId).emit("gameJoined", {
         username: this.randomPlayerWaiting.username,
@@ -147,7 +143,7 @@ export class GameManager {
       });
     }
   }
-  createGameHandler(data: UsernamePayload, client: Socket) {
+  createGameHandler(data: UsernamePayload, client: GameSocket) {
     let pendingPlayer = this.pendingPlayers.find(
       (player) => player.id === client.id
     );
@@ -176,7 +172,7 @@ export class GameManager {
     this.rooms.push(gameId);
   }
 
-  joinGameHandler(data: JoinGamePayload, client: Socket) {
+  joinGameHandler(data: JoinGamePayload, client: GameSocket) {
     const { gameId } = data;
     const username = data.username || "NooBIE";
     const pendingPlayer =

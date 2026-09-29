@@ -12,7 +12,7 @@ Three top-level directories, **not** an npm workspace (no root `package.json`) �
 
 - `client/` — React 18 + Vite + TypeScript, Tailwind + shadcn/ui + magicui, `socket.io-client`.
 - `server/` — Node + Express + Socket.IO, TypeScript compiled to `dist/`.
-- `common/types.ts` — types shared across both, imported by the client via **relative path** (`../../common/types`), not a package.
+- `common/types.ts` — types shared across both, including the Socket.IO event maps (`ClientToServerEvents`/`ServerToClientEvents`) that type the socket on each side. Imported by **relative path** (`../../common/types`), not a package. The server's `rootDir` is the repo root so it can compile this file.
 
 ## Commands
 
@@ -23,8 +23,8 @@ Client (`cd client`):
 
 Server (`cd server`):
 - `npm run dev` — `tsx watch src/index.ts`, runs TS directly with reload (no separate compile step).
-- `npm run build` — `tsc`, compiles `src/` → `dist/`.
-- `npm start` — `node dist/index.js`, runs the compiled build (production).
+- `npm run build` — `tsc`, compiles `src/` → `dist/server/src/` (and `common/` → `dist/common/`).
+- `npm start` — `node dist/server/src/index.js`, runs the compiled build (production).
 
 No test suite exists.
 

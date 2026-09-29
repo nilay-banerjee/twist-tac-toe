@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react"
 import AnimatedCircularProgressBar from "./ui/animated-circular-progress-bar"
+import { TimeEventType } from "../../../common/types"
 
 export function Timer({
     timeEvent,
     turn,
     duration = 15,
 }: {
-    timeEvent: any
+    timeEvent: TimeEventType
     turn: boolean
     duration?: number
 }) {

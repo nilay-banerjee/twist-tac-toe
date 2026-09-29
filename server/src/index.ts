@@ -2,6 +2,7 @@ require("dotenv").config();
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import { ClientToServerEvents, ServerToClientEvents } from "../../common/types";
 import { GameManager } from "./GameManager";
 import cors from "cors";
 
@@ -13,7 +14,7 @@ const gameManager = new GameManager();
 const app = express();
 app.use(cors());
 const server = http.createServer(app);
-const io = new Server(server, {
+const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
   maxHttpBufferSize: 10_000,
   cors: {
     origin: "*",

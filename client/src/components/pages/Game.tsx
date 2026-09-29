@@ -8,6 +8,12 @@ import SparklesText from "@/components/magicui/sparkles-text"
 import { confettiFireworksHandler } from "@/components/util/confetti-fireworks-handler"
 import { ConfettiEmojiHandler } from "@/components/util/confetti-emoji-handler"
 import { Timer } from "@/components/Timer"
+import {
+    MoveEventType,
+    RemoveEventType,
+    TimeEventType,
+    WinEventType,
+} from "../../../../common/types"
 let REDIRECT_DURATION = 7
 export function Game({
     sign,
@@ -18,11 +24,11 @@ export function Game({
     timeEvent,
 }: {
     sign: string
-    moveEvent: { move: string; id: string; username: string }
-    removeEvent: { move: string }
+    moveEvent: MoveEventType
+    removeEvent: RemoveEventType
     turnState: [boolean, React.Dispatch<React.SetStateAction<boolean>>]
-    winEvent: { winner: string; id: string; message: string }
-    timeEvent: { lastMoveTimeInSeconds: number }
+    winEvent: WinEventType
+    timeEvent: TimeEventType
 }) {
     let interval: NodeJS.Timeout
     const navigate = useNavigate()

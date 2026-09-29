@@ -1,14 +1,15 @@
-import { Server } from "socket.io";
+import { MoveAckType, MovePayload } from "../../common/types";
 import { User } from "./User";
 import { removeGame } from ".";
-import { MovePayload, moveSchema } from "./validators";
+import { GameServer } from "./types";
+import { moveSchema } from "./validators";
 const TIMEOUT_DURATION = 15;
 type MoveListener = (
   data: unknown,
-  callback: (response: { message: string; status: number }) => void
+  callback: (response: MoveAckType) => void
 ) => void;
 export class Game {
-  server: Server;
+  server: GameServer;
   id: string;
   private turn: User;
   private player1: User;
@@ -19,7 +20,7 @@ export class Game {
   private lastMoveTime: number;
   private intervalID: NodeJS.Timeout;
   private moveListeners = new Map<User, MoveListener>();
-  constructor(server: Server, id: string, player1: User, player2: User) {
+  constructor(server: GameServer, id: string, player1: User, player2: User) {
     this.server = server;
     this.turn = player1;
     this.id = id;

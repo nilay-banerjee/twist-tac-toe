@@ -1,12 +1,17 @@
-import { Socket } from "socket.io";
+import { GameSocket } from "./types";
 
 export class User {
-  client: Socket;
+  client: GameSocket;
   username: string;
   id: string;
   gameId: string;
   sign: string;
-  constructor(socket: Socket, username: string, gameId: string, id: string) {
+  constructor(
+    socket: GameSocket,
+    username: string,
+    gameId: string,
+    id: string
+  ) {
     this.client = socket;
     this.username = username;
     this.id = id;

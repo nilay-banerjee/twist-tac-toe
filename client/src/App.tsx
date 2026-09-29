@@ -8,7 +8,14 @@ import { Game } from "@/components/pages/Game"
 import { Create } from "@/components/pages/Create"
 import { Join } from "@/components/pages/Join"
 import { socket } from "./socket"
-import { GameJoinedEventType } from "../../common/types"
+import {
+    GameJoinedEventType,
+    InitEventType,
+    MoveEventType,
+    RemoveEventType,
+    TimeEventType,
+    WinEventType,
+} from "../../common/types"
 
 function App() {
     const [username, setUsername] = useState("")
@@ -17,26 +24,29 @@ function App() {
     const [gameJoinedEvents, setGameJoinedEvents] = useState<
         GameJoinedEventType[]
     >([])
-    const [timeEvent, setTimeEvent] = useState({ lastMoveTimeInSeconds: 0 })
-    const [moveEvent, setMoveEvent] = useState({
+    const [timeEvent, setTimeEvent] = useState<TimeEventType>({
+        lastMoveTimeInSeconds: 0,
+    })
+    const [moveEvent, setMoveEvent] = useState<MoveEventType>({
         move: "",
         id: "",
         username: "",
     })
-    const [removeEvent, setRemoveEvent] = useState({
+    const [removeEvent, setRemoveEvent] = useState<RemoveEventType>({
         move: "",
     })
-    const [winEvent, setWinEvent] = useState({
+    const [winEvent, setWinEvent] = useState<WinEventType>({
         winner: "",
         id: "",
         message: "",
+        timeout: false,
     })
     useEffect(() => {
         if (username === "")
             setUsername("NooBIE_" + Math.floor(Math.random() * 100))
     }, [])
     function resetGame() {
-        setWinEvent({ winner: "", id: "", message: "" })
+        setWinEvent({ winner: "", id: "", message: "", timeout: false })
         setMoveEvent({
             move: "",
             id: "",
@@ -50,7 +60,7 @@ function App() {
         if (gameJoinedEvents.length === 0) resetGame()
         setGameJoinedEvents((prev) => [...prev, data])
     }
-    function initHandler(data: { id: string; sign: string }) {
+    function initHandler(data: InitEventType) {
         console.log("Init", data)
         if (data.id === socket.id) {
             setSign((sign) => {
@@ -61,22 +71,22 @@ function App() {
             else if (data.sign === "O") setTurn(false)
         }
     }
-    function moveHandler(data: { move: string; id: string; username: string }) {
+    function moveHandler(data: MoveEventType) {
         if (socket.id !== data.id) {
             setMoveEvent({ ...data })
             setTurn((turn) => !turn)
         }
     }
-    function removeHandler(data: { move: string }) {
+    function removeHandler(data: RemoveEventType) {
         console.log("Remove", data)
         setRemoveEvent({ ...data })
     }
-    function winHandler(data: { winner: string; id: string; message: string }) {
+    function winHandler(data: WinEventType) {
         setWinEvent(data)
         console.log(data.message)
         setGameJoinedEvents([])
     }
-    function timeHandler(data: { lastMoveTimeInSeconds: number }) {
+    function timeHandler(data: TimeEventType) {
         setTimeEvent(data)
         console.log("Time", timeEvent)
     }
