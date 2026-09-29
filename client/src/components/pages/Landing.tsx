@@ -8,6 +8,7 @@ import { GameHeading } from "@/components/GameHeading"
 import { DifficultyPicker } from "@/components/DifficultyPicker"
 import { HowToPlay } from "@/components/HowToPlay"
 import { Button } from "@/components/ui/button"
+import { useMediaQuery } from "@/lib/useMediaQuery"
 import { socket } from "@/socket"
 import o_x from "../../assets/o_x.mp4"
 import { Difficulty } from "../../../../common/types"
@@ -19,6 +20,8 @@ export function Landing({
     username: string
     online: number
 }) {
+    const showDemo = useMediaQuery("(min-width: 768px)")
+
     useEffect(() => {
         toast.dismiss()
     }, [])
@@ -77,25 +80,27 @@ export function Landing({
                         </Button>
                     </div>
                 </section>
-                <section
-                    aria-label="Gameplay demo"
-                    className="flex flex-col items-center gap-5 md:order-1"
-                >
-                    <ShineBorder
-                        className="flex items-center justify-center rounded-lg border bg-background p-0 md:shadow-xl"
-                        color={["#A07CFE", "#FE8FB5", "#FFBE7B"]}
+                {showDemo && (
+                    <section
+                        aria-label="Gameplay demo"
+                        className="flex flex-col items-center gap-5 md:order-1"
                     >
-                        <video
-                            src={o_x}
-                            aria-label="A game of Twist Tac Toe where old marks disappear"
-                            autoPlay
-                            loop
-                            muted
-                            playsInline
-                            className="aspect-square w-[min(78vw,320px)] p-4 invert dark:invert-0"
-                        />
-                    </ShineBorder>
-                </section>
+                        <ShineBorder
+                            className="flex items-center justify-center rounded-lg border bg-background p-0 md:shadow-xl"
+                            color={["#A07CFE", "#FE8FB5", "#FFBE7B"]}
+                        >
+                            <video
+                                src={o_x}
+                                aria-label="A game of Twist Tac Toe where old marks disappear"
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                className="aspect-square w-[min(78vw,320px)] p-4 invert dark:invert-0"
+                            />
+                        </ShineBorder>
+                    </section>
+                )}
             </div>
             <HowToPlay />
         </main>
