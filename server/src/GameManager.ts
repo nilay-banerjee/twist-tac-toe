@@ -1,245 +1,296 @@
-import { JoinGamePayload, UsernamePayload } from "../../common/types";
-import { Game } from "./Game";
+import { randomInt } from "crypto";
+import { GAME_ID_ALPHABET, GAME_ID_LENGTH } from "../../common/constants";
+import {
+  JoinGamePayload,
+  PlayBotPayload,
+  UsernamePayload,
+} from "../../common/types";
+import { Game, GameTimings } from "./Game";
+import { Bot, Human, Player } from "./players";
 import { GameServer, GameSocket } from "./types";
-import { User } from "./User";
-import { joinGameSchema, usernameSchema } from "./validators";
+import { joinGameSchema, playBotSchema, usernameSchema } from "./validators";
 
-export const RECONNECT_GRACE_MS = 10_000;
+const DEFAULT_USERNAME = "Player";
+
+export interface ServerOptions extends GameTimings {
+  reconnectGraceMs: number;
+  rematchWindowMs: number;
+}
+
+interface Waiting {
+  gameId: string;
+  player: Human;
+}
+
+interface Finished {
+  game: Game;
+  wants: Set<string>;
+  expiry: NodeJS.Timeout;
+}
 
 export class GameManager {
-  private server: GameServer;
-  private leaveTimers = new Map<string, NodeJS.Timeout>();
-  private randomPlayerWaiting: User;
-  private pendingPlayers = new Map<string, User>();
+  private quickMatch: Waiting | null = null;
+  private privateGames = new Map<string, Human>();
   private games = new Map<string, Game>();
-  private rooms = new Set<string>();
-  constructor() {
-    this.randomPlayerWaiting = {} as User;
-    this.server = {} as GameServer;
-  }
-  generateGameId() {
-    return Math.random().toString(36).substring(5, 11).toUpperCase();
-  }
-  generateUniqueGameID() {
-    let gameId;
-    do {
-      gameId = this.generateGameId();
-    } while (this.rooms.has(gameId));
-    return gameId;
-  }
+  private finished = new Map<string, Finished>();
+  private leaveTimers = new Map<string, NodeJS.Timeout>();
 
-  private findPendingPlayer(clientId: string) {
-    return [...this.pendingPlayers.values()].find(
-      (player) => player.id === clientId
-    );
-  }
+  constructor(
+    private server: GameServer,
+    private options: ServerOptions
+  ) {}
 
-  private removePlayer(clientId: string) {
-    if (this.randomPlayerWaiting.id === clientId) {
-      this.rooms.delete(this.randomPlayerWaiting.gameId);
-      this.randomPlayerWaiting = {} as User;
-    }
-    const pendingPlayer = this.findPendingPlayer(clientId);
-    if (pendingPlayer) this.closeGame({ gameId: pendingPlayer.gameId });
-    [...this.games.values()]
-      .filter((game) => game.isPlayer(clientId))
-      .forEach((game) => game.playerLeft(clientId));
-  }
-
-  private reattach(client: GameSocket) {
-    clearTimeout(this.leaveTimers.get(client.id));
-    this.leaveTimers.delete(client.id);
-    if (this.randomPlayerWaiting.id === client.id) {
-      this.randomPlayerWaiting.client = client;
-    }
-    const pendingPlayer = this.findPendingPlayer(client.id);
-    if (pendingPlayer) pendingPlayer.client = client;
-    [...this.games.values()]
-      .filter((game) => game.isPlayer(client.id))
-      .forEach((game) => game.reattach(client));
-  }
-
-  handleConnection(server: GameServer, client: GameSocket) {
-    this.server = server;
+  handleConnection(client: GameSocket) {
     if (client.recovered) {
       console.log(client.id, "reconnected");
       this.reattach(client);
+    } else {
+      console.log(client.id, "connected");
     }
+    this.broadcastOnline();
     client.on("disconnect", (reason) => {
       console.log(client.id, "disconnected:", reason);
+      this.broadcastOnline();
       if (reason === "client namespace disconnect") {
-        this.removePlayer(client.id);
+        this.leave(client.id);
         return;
       }
       this.leaveTimers.set(
         client.id,
         setTimeout(() => {
           this.leaveTimers.delete(client.id);
-          this.removePlayer(client.id);
-        }, RECONNECT_GRACE_MS)
+          this.leave(client.id);
+        }, this.options.reconnectGraceMs)
       );
     });
     client.on("createGame", (data: unknown) => {
       const payload = usernameSchema.safeParse(data);
-      if (!payload.success) return;
-      this.createGameHandler(payload.data, client);
+      if (payload.success) this.createGame(payload.data, client);
     });
     client.on("joinGame", (data: unknown) => {
       const payload = joinGameSchema.safeParse(data);
-      if (!payload.success) return;
-      this.joinGameHandler(payload.data, client);
+      if (payload.success) this.joinGame(payload.data, client);
     });
     client.on("joinRandomGame", (data: unknown) => {
       const payload = usernameSchema.safeParse(data);
-      if (!payload.success) return;
-      this.joinRandomGameHandler(payload.data, client);
+      if (payload.success) this.joinRandomGame(payload.data, client);
+    });
+    client.on("playBot", (data: unknown) => {
+      const payload = playBotSchema.safeParse(data);
+      if (payload.success) this.playBot(payload.data, client);
+    });
+    client.on("cancel", () => this.cancel(client.id));
+    client.on("leave", () => this.leave(client.id));
+    client.on("rematch", () => this.rematch(client));
+  }
+
+  private createGame(data: UsernamePayload, client: GameSocket) {
+    const existing = this.findPrivateGame(client.id);
+    if (existing) {
+      this.sendWaiting(client, existing.gameId, existing.player.username);
+      return;
+    }
+    this.cancel(client.id);
+    const gameId = this.newGameId();
+    const player = new Human(client, data.username || DEFAULT_USERNAME);
+    this.privateGames.set(gameId, player);
+    this.sendWaiting(client, gameId, player.username);
+  }
+
+  private joinGame(data: JoinGamePayload, client: GameSocket) {
+    const { gameId } = data;
+    const host =
+      this.quickMatch?.gameId === gameId
+        ? this.quickMatch.player
+        : this.privateGames.get(gameId);
+    if (!host) {
+      this.sendError(
+        client,
+        "No game with that code is waiting for a player.",
+        404
+      );
+      return;
+    }
+    if (host.id === client.id) {
+      this.sendError(
+        client,
+        "That's your own game. Send the code to a friend instead.",
+        400
+      );
+      return;
+    }
+    this.cancel(client.id);
+    this.privateGames.delete(gameId);
+    if (this.quickMatch?.gameId === gameId) this.quickMatch = null;
+    const guest = new Human(client, data.username || DEFAULT_USERNAME);
+    this.startGame(gameId, host, guest);
+  }
+
+  private joinRandomGame(data: UsernamePayload, client: GameSocket) {
+    const username = data.username || DEFAULT_USERNAME;
+    if (this.quickMatch?.player.id === client.id) {
+      this.sendWaiting(client, this.quickMatch.gameId, username);
+      return;
+    }
+    this.cancel(client.id);
+    if (!this.quickMatch) {
+      this.quickMatch = {
+        gameId: this.newGameId(),
+        player: new Human(client, username),
+      };
+      this.sendWaiting(client, this.quickMatch.gameId, username);
+      return;
+    }
+    const { gameId, player: host } = this.quickMatch;
+    this.quickMatch = null;
+    this.startGame(gameId, host, new Human(client, username));
+  }
+
+  private playBot(data: PlayBotPayload, client: GameSocket) {
+    this.cancel(client.id);
+    const human = new Human(client, data.username || DEFAULT_USERNAME);
+    this.startGame(this.newGameId(), human, new Bot(data.difficulty));
+  }
+
+  private startGame(gameId: string, first: Player, second: Player) {
+    const game = new Game(
+      this.server,
+      gameId,
+      first,
+      second,
+      this.options,
+      (ended) => this.onGameEnd(ended)
+    );
+    this.games.set(gameId, game);
+    game.start();
+  }
+
+  private onGameEnd(game: Game) {
+    this.games.delete(game.id);
+    this.finished.set(game.id, {
+      game,
+      wants: new Set(),
+      expiry: setTimeout(
+        () => this.closeFinished(game.id),
+        this.options.rematchWindowMs
+      ),
     });
   }
 
-  joinRandomGameHandler(data: UsernamePayload, client: GameSocket) {
-    if (this.randomPlayerWaiting.id === client.id) {
-      this.server.to(this.randomPlayerWaiting.gameId).emit("gameJoined", {
-        username: this.randomPlayerWaiting.username,
-        id: this.randomPlayerWaiting.id,
-        gameId: this.randomPlayerWaiting.gameId,
-        message: "Waiting For Another Player To Join!",
-        playersJoined: 1,
+  private closeFinished(gameId: string) {
+    const entry = this.finished.get(gameId);
+    if (!entry) return;
+    clearTimeout(entry.expiry);
+    entry.game.dispose();
+    this.finished.delete(gameId);
+    console.log("Game", gameId, "closed");
+  }
+
+  private rematch(client: GameSocket) {
+    const entry = this.findFinished(client.id);
+    if (!entry) {
+      client.emit("rematchUnavailable", {
+        message: "This game can't be restarted anymore",
       });
       return;
     }
-    //TODO: logic to send gameJoined Msg to the 2nd player who joins the game and send multiple requests
-    const game = [...this.games.values()].find((game) =>
-      game.isPlayer(client.id)
-    );
-    if (game) {
-      const player = game.getPlayer(client.id);
-      if (!player) return;
-      this.server.to(player.gameId).emit("gameJoined", {
-        username: player.username,
-        id: player.id,
-        gameId: player.gameId,
-        message: "Another Player Joined!",
-        playersJoined: 2,
-      });
+    entry.wants.add(client.id);
+    const opponent = entry.game.opponentOf(client.id);
+    if (!opponent) return;
+    if (opponent.kind === "bot" || entry.wants.has(opponent.id)) {
+      const [first, second] = entry.game.playerList;
+      this.closeFinished(entry.game.id);
+      this.startGame(this.newGameId(), first, second);
       return;
     }
-    const username = data.username || "NooBIE";
-    if (!this.randomPlayerWaiting.id) {
-      const gameId = this.generateUniqueGameID();
-      this.randomPlayerWaiting = new User(client, username, gameId, client.id);
-      this.randomPlayerWaiting.client.join(gameId);
-      this.server.to(gameId).emit("gameJoined", {
-        username: this.randomPlayerWaiting.username,
-        id: this.randomPlayerWaiting.id,
-        gameId: gameId,
-        message: "Waiting For Another Player To Join!",
-        playersJoined: 1,
-      });
-      this.rooms.add(gameId);
-      return;
-    }
-    const gameId = this.randomPlayerWaiting.gameId;
-    if (
-      this.rooms.has(gameId) &&
-      this.randomPlayerWaiting.id != client.id
-    ) {
-      const player = new User(client, username, gameId, client.id);
-      player.client.join(gameId);
-      this.server.to(gameId).emit("gameJoined", {
-        username,
-        id: player.id,
-        gameId,
-        message: "Another Player Joined!",
-        playersJoined: 2,
-      });
-      const game = new Game(
-        this.server,
-        gameId,
-        this.randomPlayerWaiting,
-        player
-      );
-      this.games.set(gameId, game);
-      this.randomPlayerWaiting = {} as User;
-      game.gameHandler();
-    } else {
-      client.emit("error", {
-        message: "Game ID not Found",
-        errorCode: 404,
-      });
+    this.server.to(opponent.id).emit("rematchOffered", {
+      username: entry.game.playerById(client.id)?.username ?? DEFAULT_USERNAME,
+    });
+  }
+
+  private cancel(clientId: string) {
+    if (this.quickMatch?.player.id === clientId) this.quickMatch = null;
+    for (const [gameId, host] of this.privateGames) {
+      if (host.id === clientId) this.privateGames.delete(gameId);
     }
   }
-  createGameHandler(data: UsernamePayload, client: GameSocket) {
-    let pendingPlayer = this.findPendingPlayer(client.id);
-    if (pendingPlayer) {
-      this.server.to(pendingPlayer.gameId).emit("gameJoined", {
-        username: pendingPlayer.username,
-        id: pendingPlayer.id,
-        gameId: pendingPlayer.gameId,
-        message: "Waiting For Another Player To Join!",
-        playersJoined: 1,
-      });
-      return;
+
+  private leave(clientId: string) {
+    this.cancel(clientId);
+    for (const game of this.games.values()) {
+      if (game.hasPlayer(clientId)) game.playerLeft(clientId);
     }
-    const username = data.username || "NooBIE";
-    const gameId = this.generateUniqueGameID();
-    pendingPlayer = new User(client, username, gameId, client.id);
-    pendingPlayer.client.join(gameId);
-    this.server.to(gameId).emit("gameJoined", {
+    const entry = this.findFinished(clientId);
+    if (!entry) return;
+    const opponent = entry.game.opponentOf(clientId);
+    const leaver = entry.game.playerById(clientId);
+    if (opponent?.kind === "human" && leaver) {
+      this.server.to(opponent.id).emit("rematchUnavailable", {
+        message: `${leaver.username} left`,
+      });
+    }
+    this.closeFinished(entry.game.id);
+  }
+
+  private reattach(client: GameSocket) {
+    clearTimeout(this.leaveTimers.get(client.id));
+    this.leaveTimers.delete(client.id);
+    const swap = (player: Human) => {
+      if (player.id === client.id) player.client = client;
+    };
+    if (this.quickMatch) swap(this.quickMatch.player);
+    this.privateGames.forEach(swap);
+    for (const game of this.games.values()) game.reattach(client);
+    for (const { game } of this.finished.values()) game.reattach(client);
+  }
+
+  private broadcastOnline() {
+    this.server.emit("online", { count: this.server.of("/").sockets.size });
+  }
+
+  private sendWaiting(client: GameSocket, gameId: string, username: string) {
+    client.emit("gameJoined", {
       username,
-      id: pendingPlayer.id,
-      gameId: gameId,
-      message: "Waiting For Another Player To Join!",
+      id: client.id,
+      gameId,
+      message: "Waiting for another player to join",
       playersJoined: 1,
     });
-    this.pendingPlayers.set(gameId, pendingPlayer);
-    this.rooms.add(gameId);
   }
 
-  joinGameHandler(data: JoinGamePayload, client: GameSocket) {
-    const { gameId } = data;
-    const username = data.username || "NooBIE";
-    const pendingPlayer =
-      this.randomPlayerWaiting.gameId === gameId
-        ? this.randomPlayerWaiting
-        : this.pendingPlayers.get(gameId);
+  private sendError(client: GameSocket, message: string, errorCode: number) {
+    client.emit("error", { message, errorCode });
+  }
 
-    if (!pendingPlayer) {
-      client.emit("error", {
-        message: "Game ID not Found",
-        errorCode: 404,
-      });
-      return;
-    }
-    if (pendingPlayer.id === client.id) {
-      client.emit("error", {
-        message: "Cannot Join Your Own Game",
-        errorCode: 400,
-      });
-      return;
-    }
-
-    const player = new User(client, username, gameId, client.id);
-    player.client.join(gameId);
-    this.server.to(gameId).emit("gameJoined", {
-      username,
-      id: player.id,
-      gameId,
-      message: "Another Player Joined!",
-      playersJoined: 2,
-    });
-    const game = new Game(this.server, gameId, pendingPlayer, player);
-    this.games.set(gameId, game);
-    game.gameHandler();
-    this.pendingPlayers.delete(gameId);
-    if (this.randomPlayerWaiting.gameId === gameId) {
-      this.randomPlayerWaiting = {} as User;
+  private findPrivateGame(clientId: string) {
+    for (const [gameId, player] of this.privateGames) {
+      if (player.id === clientId) return { gameId, player };
     }
   }
-  closeGame(data: { gameId: string }) {
-    const { gameId } = data;
-    this.rooms.delete(gameId);
-    this.games.delete(gameId);
-    this.pendingPlayers.delete(gameId);
-    console.log("Game", gameId, "closed");
+
+  private findFinished(clientId: string) {
+    return [...this.finished.values()].find((entry) =>
+      entry.game.hasPlayer(clientId)
+    );
+  }
+
+  private newGameId() {
+    let gameId: string;
+    do {
+      gameId = Array.from(
+        { length: GAME_ID_LENGTH },
+        () => GAME_ID_ALPHABET[randomInt(GAME_ID_ALPHABET.length)]
+      ).join("");
+    } while (this.isTaken(gameId));
+    return gameId;
+  }
+
+  private isTaken(gameId: string) {
+    return (
+      this.quickMatch?.gameId === gameId ||
+      this.privateGames.has(gameId) ||
+      this.games.has(gameId) ||
+      this.finished.has(gameId)
+    );
   }
 }

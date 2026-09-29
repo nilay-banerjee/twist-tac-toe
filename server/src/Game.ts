@@ -1,254 +1,226 @@
-import { MovePayload } from "../../common/types";
-import { User } from "./User";
-import { removeGame } from ".";
+import { PlayerInfo, Sign, WinReason } from "../../common/types";
+import { chooseMove } from "./bot";
+import {
+  applyMove,
+  createState,
+  GameState,
+  nextToVanish,
+  other,
+  winningLine,
+} from "./engine";
+import { Human, Player } from "./players";
 import { GameServer, GameSocket } from "./types";
 import { moveSchema } from "./validators";
-const TIMEOUT_DURATION = 15;
-const TIME_BROADCAST_INTERVAL_MS = 5000;
+
+const SIGNS: Sign[] = ["X", "O"];
+
+type WinMessage = (winner: string, loser: string) => string;
+
+const WIN_MESSAGES: Record<WinReason, WinMessage> = {
+  line: (winner) => `${winner} wins!`,
+  timeout: (winner, loser) => `${winner} wins, ${loser} ran out of time`,
+  left: (winner, loser) => `${winner} wins, ${loser} left the game`,
+};
+
 type MoveListener = (data: unknown) => void;
+
+export interface GameTimings {
+  turnMs: number;
+  botDelayMs: number;
+}
+
 export class Game {
-  server: GameServer;
-  id: string;
-  private turn: User;
-  private player1: User;
-  private player2: User;
-  private board: string[];
-  private queueX: number[];
-  private queueO: number[];
-  private lastMoveTime = Date.now();
-  private intervalID?: NodeJS.Timeout;
-  private moveListeners = new Map<User, MoveListener>();
-  constructor(server: GameServer, id: string, player1: User, player2: User) {
-    this.server = server;
-    this.turn = player1;
-    this.id = id;
-    this.board = Array(9).fill("");
-    this.queueO = [];
-    this.queueX = [];
-    this.player1 = player1;
-    this.player2 = player2;
-    if (player1 === undefined || player2 === undefined) {
-      console.error("Cannot create game", this.id, "missing player");
-      return;
-    }
+  private state: GameState = createState("X");
+  private players: Record<Sign, Player>;
+  private turnEndsAt = 0;
+  private turnTimer?: NodeJS.Timeout;
+  private botTimer?: NodeJS.Timeout;
+  private moveListeners = new Map<Human, MoveListener>();
+  private over = false;
+
+  constructor(
+    private server: GameServer,
+    readonly id: string,
+    first: Player,
+    second: Player,
+    private timings: GameTimings,
+    private onEnd: (game: Game) => void
+  ) {
+    const [x, o] = Math.random() < 0.5 ? [first, second] : [second, first];
+    this.players = { X: x, O: o };
+  }
+
+  private get fadingHidden() {
+    return this.playerList.some(
+      (player) => player.kind === "bot" && player.difficulty === "hard"
+    );
+  }
+
+  get playerList(): [Player, Player] {
+    return [this.players.X, this.players.O];
+  }
+
+  private get humans(): Human[] {
+    return this.playerList.flatMap((player) =>
+      player.kind === "human" ? [player] : []
+    );
+  }
+
+  private signOf(id: string) {
+    return SIGNS.find((sign) => this.players[sign].id === id);
+  }
+
+  hasPlayer(id: string) {
+    return this.signOf(id) !== undefined;
+  }
+
+  playerById(id: string) {
+    const sign = this.signOf(id);
+    return sign && this.players[sign];
+  }
+
+  opponentOf(id: string) {
+    const sign = this.signOf(id);
+    return sign && this.players[other(sign)];
+  }
+
+  start() {
     console.log(
-      "Game created",
+      "Game",
       this.id,
-      "Player1:",
-      this.player1.username,
-      "Player2:",
-      this.player2.username
+      "created",
+      this.players.X.username,
+      "vs",
+      this.players.O.username
     );
-    this.startTurnTimer();
-    this.initGame();
+    for (const sign of SIGNS) {
+      const player = this.players[sign];
+      if (player.kind !== "human") continue;
+      player.client.join(this.id);
+      this.listenForMoves(player);
+      this.server.to(player.id).emit("init", {
+        gameId: this.id,
+        you: this.info(sign),
+        opponent: this.info(other(sign)),
+        fadingHidden: this.fadingHidden,
+      });
+    }
+    this.startTurn();
   }
 
-  private startTurnTimer() {
-    this.lastMoveTime = Date.now();
-    clearInterval(this.intervalID);
-    this.intervalID = setInterval(
-      () => this.checkInactivity(),
-      TIME_BROADCAST_INTERVAL_MS
-    );
-  }
-  private checkInactivity() {
-    try {
-      const lastMoveTimeInSeconds = (Date.now() - this.lastMoveTime) / 1000;
-      this.server.to(this.id).emit("time", { lastMoveTimeInSeconds });
-      if (lastMoveTimeInSeconds < TIMEOUT_DURATION) return;
-      const winner = this.turn === this.player1 ? this.player2 : this.player1;
-      console.log("Game", this.id, "timed out");
-      this.server.to(this.id).emit("win", {
-        winner: winner.username,
-        id: winner.client.id,
-        message: `Winner is ${winner.username} ${winner.sign} due to inactivity`,
-        timeout: true,
-      });
-      this.destroyGame();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  destroyGame() {
-    clearInterval(this.intervalID);
-    for (const [player, listener] of this.moveListeners) {
-      player.client.off("move", listener);
-    }
-    this.moveListeners.clear();
-    removeGame(this.id);
-    this.player1.client.leave(this.id);
-    this.player2.client.leave(this.id);
-    this.turn = {} as User;
-    this.id = "";
-    this.board = [];
-    this.queueO = [];
-    this.queueX = [];
-  }
-  initGame() {
-    const random = Math.random();
-    if (random > 0.5) {
-      this.turn = this.player1;
-      this.player1.sign = "X";
-      this.player2.sign = "O";
-    } else {
-      this.turn = this.player2;
-      this.player2.sign = "X";
-      this.player1.sign = "O";
-    }
-    try {
-      this.server.to(this.player1.client.id).emit("init", {
-        username: this.player1.username,
-        sign: this.player1.sign,
-        id: this.player1.client.id,
-      });
-      this.server.to(this.player2.client.id).emit("init", {
-        username: this.player2.username,
-        sign: this.player2.sign,
-        id: this.player2.client.id,
-      });
-      this.emitBoard();
-    } catch (e) {
-      console.error(e);
-    }
-  }
-  private emitBoard() {
-    this.server.to(this.id).emit("board", {
-      board: [...this.board],
-      turnId: this.turn.client.id,
-    });
-  }
-  gameHandler() {
-    this.listenForMoves(this.player1);
-    this.listenForMoves(this.player2);
-  }
-  private listenForMoves(player: User) {
-    const listener: MoveListener = (data) => {
-      const payload = moveSchema.safeParse(data);
-      if (!payload.success) return;
-      this.moveHandler(payload.data, player);
-    };
-    player.client.on("move", listener);
-    this.moveListeners.set(player, listener);
-  }
   reattach(client: GameSocket) {
-    const player = this.getPlayer(client.id);
+    const player = this.humans.find((human) => human.id === client.id);
     if (!player) return;
     const listener = this.moveListeners.get(player);
     if (listener) player.client.off("move", listener);
     player.client = client;
     this.listenForMoves(player);
   }
+
   playerLeft(id: string) {
-    const winner = id === this.player1.id ? this.player2 : this.player1;
-    console.log("Game", this.id, "won by", winner.username, "(opponent left)");
-    this.server.to(this.id).emit("win", {
-      winner: winner.username,
-      id: winner.client.id,
-      message: `Winner is ${winner.username} ${winner.sign}, opponent left`,
-      timeout: false,
+    const sign = this.signOf(id);
+    if (sign) this.finish(other(sign), "left", null);
+  }
+
+  dispose() {
+    this.clearTimers();
+    for (const [player, listener] of this.moveListeners) {
+      player.client.off("move", listener);
+    }
+    this.moveListeners.clear();
+    for (const player of this.humans) player.client.leave(this.id);
+  }
+
+  private info(sign: Sign): PlayerInfo {
+    const player = this.players[sign];
+    return {
+      id: player.id,
+      username: player.username,
+      sign,
+      isBot: player.kind === "bot",
+    };
+  }
+
+  private listenForMoves(player: Human) {
+    const listener: MoveListener = (data) => {
+      const payload = moveSchema.safeParse(data);
+      if (payload.success) this.handleMove(player, payload.data.cell);
+    };
+    player.client.on("move", listener);
+    this.moveListeners.set(player, listener);
+  }
+
+  private handleMove(player: Human, cell: number) {
+    if (this.over) return;
+    if (this.players[this.state.turn] !== player) {
+      return this.sendError(player, "It's not your turn.", 303);
+    }
+    if (this.state.board[cell] !== "") {
+      return this.sendError(player, "That cell is taken.", 304);
+    }
+    this.play(cell);
+  }
+
+  private sendError(player: Human, message: string, errorCode: number) {
+    this.server.to(player.id).emit("error", { message, errorCode });
+  }
+
+  private play(cell: number) {
+    const mover = this.state.turn;
+    this.state = applyMove(this.state, cell);
+    const line = winningLine(this.state.board, mover);
+    if (line) this.finish(mover, "line", line);
+    else this.startTurn();
+  }
+
+  private startTurn() {
+    this.clearTimers();
+    this.turnEndsAt = Date.now() + this.timings.turnMs;
+    this.turnTimer = setTimeout(
+      () => this.finish(other(this.state.turn), "timeout", null),
+      this.timings.turnMs
+    );
+    this.emitBoard();
+    const player = this.players[this.state.turn];
+    if (player.kind === "bot") {
+      this.botTimer = setTimeout(
+        () => this.play(chooseMove(this.state, player.difficulty)),
+        this.timings.botDelayMs
+      );
+    }
+  }
+
+  private emitBoard() {
+    this.server.to(this.id).emit("board", {
+      board: [...this.state.board],
+      turnId: this.over ? "" : this.players[this.state.turn].id,
+      nextToVanish: this.fadingHidden
+        ? { X: null, O: null }
+        : nextToVanish(this.state),
+      turnEndsInMs: this.over ? 0 : Math.max(0, this.turnEndsAt - Date.now()),
     });
-    this.destroyGame();
-  }
-  checkWin(player: User) {
-    const winPatterns = [
-      [0, 1, 2],
-      [3, 4, 5],
-      [6, 7, 8],
-      [0, 3, 6],
-      [1, 4, 7],
-      [2, 5, 8],
-      [0, 4, 8],
-      [2, 4, 6],
-    ];
-    for (const pattern of winPatterns) {
-      const [a, b, c] = pattern;
-      if (
-        this.board[a] !== undefined &&
-        this.board[a] !== "" &&
-        this.board[a] === this.board[b] &&
-        this.board[a] === this.board[c]
-      ) {
-        console.log("Game", this.id, "won by", player.username);
-        try {
-          this.server.to(this.id).emit("win", {
-            winner: player.username,
-            id: player.client.id,
-            message: `Winner is ${player.username} ${player.sign}`,
-            timeout: false,
-          });
-
-          this.destroyGame();
-          return;
-        } catch (e) {
-          console.error(e);
-        }
-        break;
-      }
-    }
   }
 
-  isValid(player: User, move: string) {
-    if (this.board[Number(move)]) {
-      try {
-        this.server
-          .to(player.client.id)
-          .emit("error", { message: "Move Not Valid", errorCode: 304 });
-        return false;
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    return true;
-  }
-  isTurn(player: User) {
-    if (player === this.turn) return true;
-    try {
-      this.server
-        .to(player.client.id)
-        .emit("error", { message: "Not Your Turn", errorCode: 303 });
-      return false;
-    } catch (e) {
-      console.error(e);
-    }
+  private finish(winnerSign: Sign, reason: WinReason, line: number[] | null) {
+    if (this.over) return;
+    this.over = true;
+    this.clearTimers();
+    const winner = this.players[winnerSign];
+    const loser = this.players[other(winnerSign)];
+    console.log("Game", this.id, "won by", winner.username, `(${reason})`);
+    this.emitBoard();
+    this.server.to(this.id).emit("win", {
+      winnerId: winner.id,
+      winner: winner.username,
+      reason,
+      line,
+      message: WIN_MESSAGES[reason](winner.username, loser.username),
+    });
+    this.onEnd(this);
   }
 
-  initMove(data: MovePayload, player: User) {
-    if (player.sign !== "X" && player.sign !== "O") return;
-    const queue = player.sign === "X" ? this.queueX : this.queueO;
-    const move = Number(data.move);
-    const removed = queue.length === 3 ? queue.shift() : undefined;
-    if (removed !== undefined) this.board[removed] = "";
-    this.board[move] = player.sign;
-    queue.push(move);
-  }
-  moveHandler(data: MovePayload, player: User) {
-    if (!player) return;
-    if (this.isTurn(player)) {
-      if (this.isValid(player, data.move)) {
-        this.startTurnTimer();
-        this.initMove(data, player);
-        this.turn = player === this.player1 ? this.player2 : this.player1;
-        try {
-          this.emitBoard();
-          this.server.to(this.id).emit("time", { lastMoveTimeInSeconds: 0 });
-        } catch (e) {
-          console.error(e);
-        }
-        this.checkWin(player);
-        return true;
-      }
-    }
-    return false;
-  }
-  isPlayer(id: string) {
-    return id === this.player1.id || id === this.player2.id;
-  }
-  getPlayer(id: string) {
-    return id === this.player1.id
-      ? this.player1
-      : id === this.player2.id
-      ? this.player2
-      : undefined;
+  private clearTimers() {
+    clearTimeout(this.turnTimer);
+    clearTimeout(this.botTimer);
   }
 }
