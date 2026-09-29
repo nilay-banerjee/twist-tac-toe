@@ -1,6 +1,6 @@
 # Deploying to EC2
 
-Both halves run on one Linux EC2 instance behind nginx, on a single domain (`t3.nilaycodes.in`):
+Both halves run on one Linux EC2 instance behind nginx, on a single domain (`t3.noobie.in`):
 
 - nginx serves the built client from `/var/www/twist-tac-toe` and forwards only `/socket.io/` to the Node server.
 - The Node server runs under PM2 on port 8080, which is never exposed to the internet.
@@ -25,8 +25,8 @@ Set these in `server/.env`:
 
 ```sh
 PORT=8080
-BACKEND_URL=https://t3.nilaycodes.in
-CLIENT_URL=https://t3.nilaycodes.in
+BACKEND_URL=https://t3.noobie.in
+CLIENT_URL=https://t3.noobie.in
 ```
 
 `CLIENT_URL` is the only origin allowed through CORS. Leaving it unset allows any origin.
@@ -50,7 +50,7 @@ Vite bakes `VITE_BACKEND_URL` into the bundle at build time, so set it on the bu
 ```sh
 cd ~/twist-tac-toe/client
 npm ci
-VITE_BACKEND_URL=https://t3.nilaycodes.in npm run build
+VITE_BACKEND_URL=https://t3.noobie.in npm run build
 sudo mkdir -p /var/www/twist-tac-toe
 sudo rsync -a --delete dist/ /var/www/twist-tac-toe/
 ```
@@ -68,7 +68,7 @@ map $http_upgrade $connection_upgrade {
 }
 
 server {
-    server_name t3.nilaycodes.in;
+    server_name t3.noobie.in;
 
     root /var/www/twist-tac-toe;
     index index.html;
@@ -119,7 +119,7 @@ sudo systemctl reload nginx
 ## HTTPS
 
 ```sh
-sudo certbot --nginx -d t3.nilaycodes.in
+sudo certbot --nginx -d t3.noobie.in --redirect
 ```
 
 certbot adds the `listen 443 ssl` lines and the HTTP-to-HTTPS redirect to the server block. The page and the socket are on the same domain, so the one certificate covers both. Browsers block a plain `ws://` socket from an HTTPS page, so this step is required, not optional.
@@ -137,7 +137,7 @@ pm2 restart t3-server   # ends any games in progress
 
 cd ../client
 npm ci
-VITE_BACKEND_URL=https://t3.nilaycodes.in npm run build
+VITE_BACKEND_URL=https://t3.noobie.in npm run build
 sudo rsync -a --delete dist/ /var/www/twist-tac-toe/
 ```
 
