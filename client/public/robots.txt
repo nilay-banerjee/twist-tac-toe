@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /game/
+Disallow: /join/
+Allow: /
+
+Sitemap: https://t3.noobie.in/sitemap.xml

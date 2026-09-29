@@ -4,10 +4,68 @@
         <meta charset="UTF-8" />
         <link rel="icon" type="image/png" href="/favicon.png" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Twist Tac Toe</title>
+        <title>
+            Twist Tac Toe: tic tac toe where your oldest mark disappears
+        </title>
+        <meta
+            name="description"
+            content="Online tic tac toe with a twist: you can only keep three marks, and your oldest one disappears. Play a friend, a stranger or the computer, free in your browser."
+        />
+        <link rel="canonical" href="https://t3.noobie.in/" />
+        <meta name="theme-color" content="#020817" />
+
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Twist Tac Toe" />
+        <meta property="og:url" content="https://t3.noobie.in/" />
+        <meta property="og:title" content="Twist Tac Toe" />
+        <meta
+            property="og:description"
+            content="Tic tac toe where your oldest mark disappears. Play a friend, a stranger or the computer."
+        />
+        <meta property="og:image" content="https://t3.noobie.in/og-image.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta
+            property="og:image:alt"
+            content="Twist Tac Toe: a board where the oldest X is fading out"
+        />
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Twist Tac Toe" />
+        <meta
+            name="twitter:description"
+            content="Tic tac toe where your oldest mark disappears. Play a friend, a stranger or the computer."
+        />
+        <meta
+            name="twitter:image"
+            content="https://t3.noobie.in/og-image.png"
+        />
+
+        <script type="application/ld+json">
+            {
+                "@context": "https://schema.org",
+                "@type": "WebApplication",
+                "name": "Twist Tac Toe",
+                "url": "https://t3.noobie.in/",
+                "description": "Online tic tac toe with a twist: each player can only keep three marks, and placing a fourth removes their oldest one.",
+                "applicationCategory": "GameApplication",
+                "operatingSystem": "Any",
+                "browserRequirements": "Requires JavaScript",
+                "image": "https://t3.noobie.in/og-image.png",
+                "offers": {
+                    "@type": "Offer",
+                    "price": "0",
+                    "priceCurrency": "USD"
+                }
+            }
+        </script>
     </head>
     <body>
         <div id="root"></div>
+        <noscript>
+            Twist Tac Toe is tic tac toe where your oldest mark disappears. It
+            needs JavaScript to run.
+        </noscript>
         <script type="module" src="/src/main.tsx"></script>
     </body>
 </html>
