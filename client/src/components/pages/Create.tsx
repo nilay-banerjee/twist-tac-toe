@@ -9,7 +9,7 @@ import { CopyButton } from "@/components/CopyButton"
 import { DifficultyPicker } from "@/components/DifficultyPicker"
 import { Difficulty, GameJoinedEventType } from "../../../../common/types"
 
-const BOT_OFFER_DELAY_MS = 10_000
+const BOT_OFFER_DELAY_MS = 5_000
 
 export function Create({
     username,
