@@ -281,6 +281,28 @@ describe("playing", () => {
   });
 });
 
+describe("renaming", () => {
+  it("tells both players when someone renames mid-game", async () => {
+    const { x, o } = await startPrivateGame();
+    const toOpponent = next(o, "playerRenamed");
+    const toSelf = next(x, "playerRenamed");
+    x.emit("rename", { username: "NewName" });
+    expect(await toOpponent).toEqual({ id: x.id, username: "NewName" });
+    expect((await toSelf).username).toBe("NewName");
+  });
+
+  it("uses a name changed while waiting in quick match", async () => {
+    const first = await client();
+    first.emit("joinRandomGame", { username: "before" });
+    await next(first, "gameJoined");
+    first.emit("rename", { username: "after" });
+    const second = await client();
+    const init = next(second, "init");
+    second.emit("joinRandomGame", { username: "second" });
+    expect((await init).opponent.username).toBe("after");
+  });
+});
+
 describe("bot games", () => {
   it("starts against the computer and it answers moves", async () => {
     const human = await client();

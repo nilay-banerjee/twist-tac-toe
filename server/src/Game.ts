@@ -14,14 +14,6 @@ import { moveSchema } from "./validators";
 
 const SIGNS: Sign[] = ["X", "O"];
 
-type WinMessage = (winner: string, loser: string) => string;
-
-const WIN_MESSAGES: Record<WinReason, WinMessage> = {
-  line: (winner) => `${winner} wins!`,
-  timeout: (winner, loser) => `${winner} wins, ${loser} ran out of time`,
-  left: (winner, loser) => `${winner} wins, ${loser} left the game`,
-};
-
 type MoveListener = (data: unknown) => void;
 
 export interface GameTimings {
@@ -117,6 +109,13 @@ export class Game {
     this.listenForMoves(player);
   }
 
+  rename(id: string, username: string) {
+    const player = this.humans.find((human) => human.id === id);
+    if (!player) return;
+    player.username = username;
+    this.server.to(this.id).emit("playerRenamed", { id, username });
+  }
+
   playerLeft(id: string) {
     const sign = this.signOf(id);
     if (sign) this.finish(other(sign), "left", null);
@@ -206,16 +205,9 @@ export class Game {
     this.over = true;
     this.clearTimers();
     const winner = this.players[winnerSign];
-    const loser = this.players[other(winnerSign)];
     console.log("Game", this.id, "won by", winner.username, `(${reason})`);
     this.emitBoard();
-    this.server.to(this.id).emit("win", {
-      winnerId: winner.id,
-      winner: winner.username,
-      reason,
-      line,
-      message: WIN_MESSAGES[reason](winner.username, loser.username),
-    });
+    this.server.to(this.id).emit("win", { winnerId: winner.id, reason, line });
     this.onEnd(this);
   }
 

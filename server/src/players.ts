@@ -10,7 +10,10 @@ const BOT_NAMES: Record<Difficulty, string> = {
 
 export class Human {
   readonly kind = "human";
-  constructor(public client: GameSocket, readonly username: string) {}
+  constructor(
+    public client: GameSocket,
+    public username: string
+  ) {}
   get id() {
     return this.client.id;
   }

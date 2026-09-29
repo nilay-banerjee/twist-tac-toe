@@ -53,10 +53,13 @@ export type WinReason = "line" | "timeout" | "left";
 
 export interface WinEventType {
   winnerId: string;
-  winner: string;
   reason: WinReason;
   line: number[] | null;
-  message: string;
+}
+
+export interface PlayerRenamedEventType {
+  id: string;
+  username: string;
 }
 
 export interface RematchOfferedEventType {
@@ -85,6 +88,7 @@ export interface ClientToServerEvents {
   cancel: () => void;
   leave: () => void;
   rematch: () => void;
+  rename: (data: UsernamePayload) => void;
 }
 
 export interface ServerToClientEvents {
@@ -92,6 +96,7 @@ export interface ServerToClientEvents {
   init: (data: InitEventType) => void;
   board: (data: BoardEventType) => void;
   win: (data: WinEventType) => void;
+  playerRenamed: (data: PlayerRenamedEventType) => void;
   rematchOffered: (data: RematchOfferedEventType) => void;
   rematchUnavailable: (data: NoticeEventType) => void;
   online: (data: OnlineEventType) => void;

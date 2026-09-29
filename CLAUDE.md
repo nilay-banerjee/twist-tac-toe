@@ -52,8 +52,8 @@ One `GameManager` owns matchmaking; each match is a `Game`.
 ### Socket.IO event contract (the real API)
 
 This event contract, not any HTTP endpoint, is the client/server interface:
-- Client → Server: `createGame`, `joinGame`, `joinRandomGame`, `playBot`, `move` (`{ cell: 0-8 }`, no ack; the next `board` broadcast is the confirmation), `cancel`, `leave`, `rematch`.
-- Server → Client: `gameJoined` (waiting for an opponent), `init`, `board`, `win`, `rematchOffered`, `rematchUnavailable`, `online`, `error`.
+- Client → Server: `createGame`, `joinGame`, `joinRandomGame`, `playBot`, `move` (`{ cell: 0-8 }`, no ack; the next `board` broadcast is the confirmation), `cancel`, `leave`, `rematch`, `rename` (updates the player's name wherever they are: waiting, in a game or on the result screen).
+- Server → Client: `gameJoined` (waiting for an opponent), `init`, `board`, `win` (winner id, reason and line only; the client words the result with `describeWin` from `common/messages.ts` using current names), `playerRenamed`, `rematchOffered`, `rematchUnavailable`, `online`, `error`.
 
 Payload shapes and both event maps live in `common/types.ts`.
 

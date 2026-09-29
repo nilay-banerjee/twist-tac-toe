@@ -18,6 +18,8 @@ import {
     BoardEventType,
     GameJoinedEventType,
     InitEventType,
+    PlayerInfo,
+    PlayerRenamedEventType,
     WinEventType,
 } from "../../common/types"
 
@@ -89,6 +91,20 @@ function App() {
                 },
             }))
         const onOnline = ({ count }: { count: number }) => setOnline(count)
+        const onPlayerRenamed = ({ id, username }: PlayerRenamedEventType) =>
+            setSession((s) => {
+                if (!s.game) return s
+                const withName = (player: PlayerInfo) =>
+                    player.id === id ? { ...player, username } : player
+                return {
+                    ...s,
+                    game: {
+                        ...s.game,
+                        you: withName(s.game.you),
+                        opponent: withName(s.game.opponent),
+                    },
+                }
+            })
 
         socket.on("gameJoined", onGameJoined)
         socket.on("init", onInit)
@@ -97,6 +113,7 @@ function App() {
         socket.on("rematchOffered", onRematchOffered)
         socket.on("rematchUnavailable", onRematchUnavailable)
         socket.on("online", onOnline)
+        socket.on("playerRenamed", onPlayerRenamed)
         return () => {
             socket.off("gameJoined", onGameJoined)
             socket.off("init", onInit)
@@ -105,11 +122,14 @@ function App() {
             socket.off("rematchOffered", onRematchOffered)
             socket.off("rematchUnavailable", onRematchUnavailable)
             socket.off("online", onOnline)
+            socket.off("playerRenamed", onPlayerRenamed)
         }
     }, [])
 
     function rename(name: string) {
-        setUsername(cleanUsername(name) || randomUsername())
+        const username = cleanUsername(name) || randomUsername()
+        setUsername(username)
+        socket.emit("rename", { username })
     }
 
     function requestRematch() {

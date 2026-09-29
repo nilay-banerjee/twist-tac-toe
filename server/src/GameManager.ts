@@ -82,6 +82,12 @@ export class GameManager {
     client.on("cancel", () => this.cancel(client.id));
     client.on("leave", () => this.leave(client.id));
     client.on("rematch", () => this.rematch(client));
+    client.on("rename", (data: unknown) => {
+      const payload = usernameSchema.safeParse(data);
+      if (payload.success && payload.data.username) {
+        this.rename(client.id, payload.data.username);
+      }
+    });
   }
 
   private createGame(data: UsernamePayload, client: GameSocket) {
@@ -206,6 +212,18 @@ export class GameManager {
     this.server.to(opponent.id).emit("rematchOffered", {
       username: entry.game.playerById(client.id)?.username ?? DEFAULT_USERNAME,
     });
+  }
+
+  private rename(clientId: string, username: string) {
+    const apply = (player: Human) => {
+      if (player.id === clientId) player.username = username;
+    };
+    if (this.quickMatch) apply(this.quickMatch.player);
+    this.privateGames.forEach(apply);
+    for (const game of this.games.values()) game.rename(clientId, username);
+    for (const { game } of this.finished.values()) {
+      game.rename(clientId, username);
+    }
   }
 
   private cancel(clientId: string) {

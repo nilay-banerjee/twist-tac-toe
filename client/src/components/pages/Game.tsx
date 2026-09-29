@@ -10,6 +10,7 @@ import { confettiFireworksHandler } from "@/components/util/confetti-fireworks-h
 import { ConfettiEmojiHandler } from "@/components/util/confetti-emoji-handler"
 import { socket } from "@/socket"
 import { Session } from "@/App"
+import { describeWin } from "../../../../common/messages"
 import { Cell, ErrorEventType } from "../../../../common/types"
 
 const EMPTY_BOARD: Cell[] = Array(9).fill("")
@@ -50,11 +51,12 @@ export function Game({
         }
     }, [onLeave, navigate])
 
+    const youId = game?.you.id
     useEffect(() => {
-        if (!win || !game) return
-        if (win.winnerId === game.you.id) confettiFireworksHandler()
+        if (!win || !youId) return
+        if (win.winnerId === youId) confettiFireworksHandler()
         else ConfettiEmojiHandler(["💩", "🧻", "🚽", "🤮"])
-    }, [win, game])
+    }, [win, youId])
 
     useEffect(() => {
         if (!confirmLeave) return
@@ -93,8 +95,12 @@ export function Game({
     const myTurn = !win && board?.turnId === game.you.id
     const theirTurn = !win && board?.turnId === game.opponent.id
     const turnEndsAt = board?.turnEndsAt ?? 0
+    const [winner, loser] =
+        win?.winnerId === game.you.id
+            ? [game.you, game.opponent]
+            : [game.opponent, game.you]
     const status = win
-        ? win.message
+        ? describeWin(win.reason, winner.username, loser.username)
         : myTurn
           ? "Your turn"
           : `${game.opponent.username}'s turn`
