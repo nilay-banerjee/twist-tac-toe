@@ -29,14 +29,11 @@ app.get("/", (req, res) => {
   res.json({ msg: "Hello From Server" });
 });
 io.on("connection", (socket) => {
-  console.log(socket.id, " Connected\n");
+  console.log(socket.id, "connected");
   gameManager.handleConnection(io, socket);
 });
 io.engine.on("connection_error", (err) => {
-  console.log(err.req); // the request object
-  console.log(err.code); // the error code, for example 1
-  console.log(err.message); // the error message, for example "Session ID unknown"
-  console.log(err.context); // some additional error context
+  console.error("Connection error", err.code, err.message);
 });
 
 server.listen(PORT, () => {

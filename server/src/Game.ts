@@ -30,13 +30,11 @@ export class Game {
     this.player1 = player1;
     this.player2 = player2;
     this.lastMoveTime = Date.now();
-    console.log("Constuctor: ", Date.now() - this.lastMoveTime / 1000);
     this.intervalID = setInterval(() => {
       let lastMoveTimeInSeconds = (Date.now() - this.lastMoveTime) / 1000;
-      console.log("Last Move Time: ", lastMoveTimeInSeconds);
       this.server.to(this.id).emit("time", { lastMoveTimeInSeconds });
       if ((Date.now() - this.lastMoveTime) / 1000 >= TIMEOUT_DURATION) {
-        console.log("Game destroyed due to inactivity");
+        console.log("Game", this.id, "timed out");
         try {
           this.server.to(this.id).emit("win", {
             winner: (this.player1 === this.turn ? this.player2 : this.player1)
@@ -59,8 +57,7 @@ export class Game {
       }
     }, 5000);
     if (player1 === undefined || player2 === undefined) {
-      console.log("Cannot Create Game, User Invalid!");
-      console.log("Player1:", player1, "Player2:", player2);
+      console.error("Cannot create game", this.id, "missing player");
       return;
     }
     console.log(
@@ -75,7 +72,6 @@ export class Game {
   }
 
   destroyGame() {
-    console.log("Game destroyed", this.id);
     clearInterval(this.intervalID);
     for (const [player, listener] of this.moveListeners) {
       player.client.off("move", listener);
@@ -135,6 +131,7 @@ export class Game {
   }
   playerLeft(id: string) {
     const winner = id === this.player1.id ? this.player2 : this.player1;
+    console.log("Game", this.id, "won by", winner.username, "(opponent left)");
     this.server.to(this.id).emit("win", {
       winner: winner.username,
       id: winner.client.id,
@@ -144,7 +141,6 @@ export class Game {
     this.destroyGame();
   }
   checkWin() {
-    console.log(this.board);
     const winPatterns = [
       [0, 1, 2],
       [3, 4, 5],
@@ -163,7 +159,7 @@ export class Game {
         this.board[a] === this.board[b] &&
         this.board[a] === this.board[c]
       ) {
-        console.log("Winner is", this.turn.username + " " + this.turn.sign);
+        console.log("Game", this.id, "won by", this.turn.username);
         try {
           this.server.to(this.id).emit("win", {
             winner: this.turn.username,
@@ -183,7 +179,6 @@ export class Game {
   }
 
   isValid(player: User, move: string) {
-    console.log("isV Move", move);
     if (this.board[Number(move)]) {
       try {
         this.server
@@ -194,7 +189,6 @@ export class Game {
         console.error(e);
       }
     }
-    console.log("Valid Move");
     return true;
   }
   isTurn(player: User) {
@@ -213,11 +207,8 @@ export class Game {
     const move = Number(data.move);
     if (player.sign === "X") {
       if (this.queueX.length === 3) {
-        console.log("Before", this.queueX);
         const removed = this.queueX.shift() || 0;
-        console.log("After", this.queueX);
         this.board[removed] = "";
-        console.log(player.sign, removed);
         try {
           this.server.to(this.id).emit("remove", { move: removed.toString() });
         } catch (e) {
@@ -228,11 +219,8 @@ export class Game {
       this.queueX.push(move);
     } else if (player.sign === "O") {
       if (this.queueO.length === 3) {
-        console.log("Before: ", this.queueO);
         const removed = this.queueO.shift() || 0;
-        console.log("After: ", this.queueO);
         this.board[removed] = "";
-        console.log(player.sign, removed);
         try {
           this.server.to(this.id).emit("remove", { move: removed.toString() });
         } catch (e) {
@@ -250,15 +238,13 @@ export class Game {
     if (!player) return;
     if (this.isTurn(player)) {
       if (this.isValid(player, data.move)) {
-        console.log(player.sign, "Marked", data.move);
         this.lastMoveTime = Date.now();
         clearInterval(this.intervalID);
         this.intervalID = setInterval(() => {
           let lastMoveTimeInSeconds = (Date.now() - this.lastMoveTime) / 1000;
-          console.log("Last Move Time: ", lastMoveTimeInSeconds);
           this.server.to(this.id).emit("time", { lastMoveTimeInSeconds });
           if ((Date.now() - this.lastMoveTime) / 1000 >= TIMEOUT_DURATION) {
-            console.log("Game destroyed due to inactivity");
+            console.log("Game", this.id, "timed out");
             try {
               this.server.to(this.id).emit("win", {
                 winner: (this.player1 === this.turn
@@ -289,7 +275,6 @@ export class Game {
             username: player.username,
           });
           let lastMoveTimeInSeconds = (Date.now() - this.lastMoveTime) / 1000;
-          console.log("Last Move Time: ", lastMoveTimeInSeconds);
           this.server.to(this.id).emit("time", { lastMoveTimeInSeconds });
         } catch (e) {
           console.error(e);

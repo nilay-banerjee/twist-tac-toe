@@ -17,16 +17,6 @@ export class GameManager {
     this.games = [];
     this.rooms = [];
   }
-  private logData() {
-    console.log("Games: ", this.games.length, this.games);
-    console.log("Rooms: ", this.rooms.length, this.rooms);
-    console.log(
-      "Pending Player: ",
-      this.pendingPlayers.length,
-      this.pendingPlayers.map((player) => player.username)
-    );
-    console.log("Random Player: ", this.randomPlayerWaiting);
-  }
   generateGameId() {
     return Math.random().toString(36).substring(5, 11).toUpperCase();
   }
@@ -54,7 +44,7 @@ export class GameManager {
       this.games
         .filter((game) => game.isPlayer(client.id))
         .forEach((game) => game.playerLeft(client.id));
-      console.log(`${client.id} Disconnected\n`);
+      console.log(client.id, "disconnected");
     });
     client.on("createGame", (data: unknown) => {
       const payload = usernameSchema.safeParse(data);
@@ -223,7 +213,6 @@ export class GameManager {
     this.pendingPlayers = this.pendingPlayers.filter(
       (player) => player.gameId !== gameId
     );
-    console.log("Game Closed", gameId);
-    this.logData();
+    console.log("Game", gameId, "closed");
   }
 }

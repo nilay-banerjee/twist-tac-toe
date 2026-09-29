@@ -16,7 +16,6 @@ export class User {
     this.username = username;
     this.id = id;
     this.gameId = gameId;
-    console.log("User created", this.username, "ID:", id);
     this.sign = "";
   }
 }
