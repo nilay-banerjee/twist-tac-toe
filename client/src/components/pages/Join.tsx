@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { socket } from "@/socket"
 import { GameHeading } from "@/components/GameHeading"
@@ -7,7 +7,9 @@ import { MagicCard } from "../magicui/magic-card"
 import { useTheme } from "../util/themeProvider"
 import { Loading } from "../ui/loading"
 import { Button } from "../ui/button"
-import { GameJoinedEventType } from "../../../../common/types"
+import { ErrorEventType, GameJoinedEventType } from "../../../../common/types"
+
+const RESPONSE_TIMEOUT_MS = 10_000
 
 export function Join({
     username,
@@ -22,6 +24,7 @@ export function Join({
     const [isLoading, setIsLoading] = useState(false)
     const [isError, setIsError] = useState(false)
     const [errorMsg, setErrorMsg] = useState("")
+    const responseTimeout = useRef<ReturnType<typeof setTimeout>>()
     const navigate = useNavigate()
     const { theme } = useTheme()
     useEffect(() => {
@@ -34,36 +37,44 @@ export function Join({
                 event.id === socket.id &&
                 gameId.toUpperCase() === event.gameId.toUpperCase()
             ) {
-                setIsLoading(false)
+                stopWaiting()
                 navigate(`/game/${event.gameId}`)
             }
         })
     }, [events])
+    useEffect(() => {
+        function errorHandler(data: ErrorEventType) {
+            showError(data.message)
+        }
+        socket.on("error", errorHandler)
+        return () => {
+            socket.off("error", errorHandler)
+        }
+    }, [])
+    function stopWaiting() {
+        clearTimeout(responseTimeout.current)
+        responseTimeout.current = undefined
+        setIsLoading(false)
+    }
+    function showError(message: string) {
+        stopWaiting()
+        setIsError(true)
+        setErrorMsg(message)
+    }
     function joinGame() {
-        if (!socket.connected) socket.connect()
-        if (!gameId) {
-            setIsError(true)
-            setErrorMsg("Please Enter A Game Code!")
-            setTimeout(() => {
-                setIsError(false)
-                setErrorMsg("")
-            }, 2500)
+        if (responseTimeout.current) return
+        if (gameId.length !== 6) {
+            showError("Please Enter The 6 Character Game Code!")
             return
         }
+        if (!socket.connected) socket.connect()
         setIsLoading(true)
         setIsError(false)
         socket.emit("joinGame", { username, gameId: gameId.toUpperCase() })
-        setTimeout(() => {
-            setIsLoading(false)
-            setIsError(true)
-            setErrorMsg("GameID not found")
-            setTimeout(() => {
-                setIsError(false)
-            }, 2000)
-        }, 3000)
-        return () => {
-            socket.disconnect()
-        }
+        responseTimeout.current = setTimeout(
+            () => showError("Server Not Responding, Try Again"),
+            RESPONSE_TIMEOUT_MS,
+        )
     }
     return (
         <div>

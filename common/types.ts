@@ -53,7 +53,7 @@ export interface WinEventType {
 
 export interface ErrorEventType {
   message: string;
-  errorCode: string | number;
+  errorCode: number;
 }
 
 export interface ClientToServerEvents {

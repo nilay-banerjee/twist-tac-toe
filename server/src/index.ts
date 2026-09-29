@@ -8,16 +8,17 @@ import cors from "cors";
 
 const PORT = Number(process.env.PORT) || 8080;
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost";
+const CLIENT_URL = process.env.CLIENT_URL || "*";
 
 const gameManager = new GameManager();
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: CLIENT_URL }));
 const server = http.createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
   maxHttpBufferSize: 10_000,
   cors: {
-    origin: "*",
+    origin: CLIENT_URL,
     methods: ["GET", "POST"],
   },
 });

@@ -4,6 +4,7 @@ import { removeGame } from ".";
 import { GameServer } from "./types";
 import { moveSchema } from "./validators";
 const TIMEOUT_DURATION = 15;
+const TIME_BROADCAST_INTERVAL_MS = 5000;
 type MoveListener = (
   data: unknown,
   callback: (response: MoveAckType) => void
@@ -17,8 +18,8 @@ export class Game {
   private board: string[];
   private queueX: number[];
   private queueO: number[];
-  private lastMoveTime: number;
-  private intervalID: NodeJS.Timeout;
+  private lastMoveTime = Date.now();
+  private intervalID?: NodeJS.Timeout;
   private moveListeners = new Map<User, MoveListener>();
   constructor(server: GameServer, id: string, player1: User, player2: User) {
     this.server = server;
@@ -29,33 +30,6 @@ export class Game {
     this.queueX = [];
     this.player1 = player1;
     this.player2 = player2;
-    this.lastMoveTime = Date.now();
-    this.intervalID = setInterval(() => {
-      let lastMoveTimeInSeconds = (Date.now() - this.lastMoveTime) / 1000;
-      this.server.to(this.id).emit("time", { lastMoveTimeInSeconds });
-      if ((Date.now() - this.lastMoveTime) / 1000 >= TIMEOUT_DURATION) {
-        console.log("Game", this.id, "timed out");
-        try {
-          this.server.to(this.id).emit("win", {
-            winner: (this.player1 === this.turn ? this.player2 : this.player1)
-              .username,
-            id: (this.player1 === this.turn ? this.player2 : this.player1)
-              .client.id,
-            message: `Winner is ${
-              (this.player1 === this.turn ? this.player2 : this.player1)
-                .username
-            } ${
-              (this.player1 === this.turn ? this.player2 : this.player1).sign
-            } due to inactivity`,
-            timeout: true,
-          });
-
-          this.destroyGame();
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }, 5000);
     if (player1 === undefined || player2 === undefined) {
       console.error("Cannot create game", this.id, "missing player");
       return;
@@ -68,7 +42,35 @@ export class Game {
       "Player2:",
       this.player2.username
     );
+    this.startTurnTimer();
     this.initGame();
+  }
+
+  private startTurnTimer() {
+    this.lastMoveTime = Date.now();
+    clearInterval(this.intervalID);
+    this.intervalID = setInterval(
+      () => this.checkInactivity(),
+      TIME_BROADCAST_INTERVAL_MS
+    );
+  }
+  private checkInactivity() {
+    try {
+      const lastMoveTimeInSeconds = (Date.now() - this.lastMoveTime) / 1000;
+      this.server.to(this.id).emit("time", { lastMoveTimeInSeconds });
+      if (lastMoveTimeInSeconds < TIMEOUT_DURATION) return;
+      const winner = this.turn === this.player1 ? this.player2 : this.player1;
+      console.log("Game", this.id, "timed out");
+      this.server.to(this.id).emit("win", {
+        winner: winner.username,
+        id: winner.client.id,
+        message: `Winner is ${winner.username} ${winner.sign} due to inactivity`,
+        timeout: true,
+      });
+      this.destroyGame();
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   destroyGame() {
@@ -204,78 +206,34 @@ export class Game {
   }
 
   initMove(data: MovePayload, player: User) {
+    if (player.sign !== "X" && player.sign !== "O") return;
+    const queue = player.sign === "X" ? this.queueX : this.queueO;
     const move = Number(data.move);
-    if (player.sign === "X") {
-      if (this.queueX.length === 3) {
-        const removed = this.queueX.shift() || 0;
-        this.board[removed] = "";
-        try {
-          this.server.to(this.id).emit("remove", { move: removed.toString() });
-        } catch (e) {
-          console.error(e);
-        }
+    const removed = queue.length === 3 ? queue.shift() : undefined;
+    if (removed !== undefined) {
+      this.board[removed] = "";
+      try {
+        this.server.to(this.id).emit("remove", { move: removed.toString() });
+      } catch (e) {
+        console.error(e);
       }
-      this.board[move] = "X";
-      this.queueX.push(move);
-    } else if (player.sign === "O") {
-      if (this.queueO.length === 3) {
-        const removed = this.queueO.shift() || 0;
-        this.board[removed] = "";
-        try {
-          this.server.to(this.id).emit("remove", { move: removed.toString() });
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      this.board[move] = "O";
-      this.queueO.push(move);
-    } else {
-      return;
     }
+    this.board[move] = player.sign;
+    queue.push(move);
     this.checkWin();
   }
   moveHandler(data: MovePayload, player: User) {
     if (!player) return;
     if (this.isTurn(player)) {
       if (this.isValid(player, data.move)) {
-        this.lastMoveTime = Date.now();
-        clearInterval(this.intervalID);
-        this.intervalID = setInterval(() => {
-          let lastMoveTimeInSeconds = (Date.now() - this.lastMoveTime) / 1000;
-          this.server.to(this.id).emit("time", { lastMoveTimeInSeconds });
-          if ((Date.now() - this.lastMoveTime) / 1000 >= TIMEOUT_DURATION) {
-            console.log("Game", this.id, "timed out");
-            try {
-              this.server.to(this.id).emit("win", {
-                winner: (this.player1 === this.turn
-                  ? this.player2
-                  : this.player1
-                ).username,
-                id: (this.player1 === this.turn ? this.player2 : this.player1)
-                  .client.id,
-                message: `Winner is ${
-                  (this.player1 === this.turn ? this.player2 : this.player1)
-                    .username
-                } ${
-                  (this.player1 === this.turn ? this.player2 : this.player1)
-                    .sign
-                } due to inactivity`,
-                timeout: true,
-              });
-              this.destroyGame();
-            } catch (e) {
-              console.error(e);
-            }
-          }
-        }, 5000);
+        this.startTurnTimer();
         try {
           player.client.to(this.id).emit("move", {
             move: data.move,
             id: player.client.id,
             username: player.username,
           });
-          let lastMoveTimeInSeconds = (Date.now() - this.lastMoveTime) / 1000;
-          this.server.to(this.id).emit("time", { lastMoveTimeInSeconds });
+          this.server.to(this.id).emit("time", { lastMoveTimeInSeconds: 0 });
         } catch (e) {
           console.error(e);
         }

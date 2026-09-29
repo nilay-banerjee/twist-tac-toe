@@ -7,15 +7,12 @@ import { joinGameSchema, usernameSchema } from "./validators";
 export class GameManager {
   private server: GameServer;
   private randomPlayerWaiting: User;
-  private pendingPlayers: User[];
-  private games: Game[];
-  private rooms: string[];
+  private pendingPlayers = new Map<string, User>();
+  private games = new Map<string, Game>();
+  private rooms = new Set<string>();
   constructor() {
     this.randomPlayerWaiting = {} as User;
     this.server = {} as GameServer;
-    this.pendingPlayers = [];
-    this.games = [];
-    this.rooms = [];
   }
   generateGameId() {
     return Math.random().toString(36).substring(5, 11).toUpperCase();
@@ -24,24 +21,26 @@ export class GameManager {
     let gameId;
     do {
       gameId = this.generateGameId();
-    } while (this.rooms.includes(gameId));
+    } while (this.rooms.has(gameId));
     return gameId;
+  }
+
+  private findPendingPlayer(clientId: string) {
+    return [...this.pendingPlayers.values()].find(
+      (player) => player.id === clientId
+    );
   }
 
   handleConnection(server: GameServer, client: GameSocket) {
     this.server = server;
     client.on("disconnect", () => {
       if (this.randomPlayerWaiting.id === client.id) {
-        this.rooms = this.rooms.filter(
-          (room) => room !== this.randomPlayerWaiting.gameId
-        );
+        this.rooms.delete(this.randomPlayerWaiting.gameId);
         this.randomPlayerWaiting = {} as User;
       }
-      const pendingPlayer = this.pendingPlayers.find(
-        (player) => player.id === client.id
-      );
+      const pendingPlayer = this.findPendingPlayer(client.id);
       if (pendingPlayer) this.closeGame({ gameId: pendingPlayer.gameId });
-      this.games
+      [...this.games.values()]
         .filter((game) => game.isPlayer(client.id))
         .forEach((game) => game.playerLeft(client.id));
       console.log(client.id, "disconnected");
@@ -75,7 +74,9 @@ export class GameManager {
       return;
     }
     //TODO: logic to send gameJoined Msg to the 2nd player who joins the game and send multiple requests
-    const game = this.games.find((game) => game.isPlayer(client.id));
+    const game = [...this.games.values()].find((game) =>
+      game.isPlayer(client.id)
+    );
     if (game) {
       const player = game.getPlayer(client.id);
       if (!player) return;
@@ -100,12 +101,12 @@ export class GameManager {
         message: "Waiting For Another Player To Join!",
         playersJoined: 1,
       });
-      this.rooms.push(gameId);
+      this.rooms.add(gameId);
       return;
     }
     const gameId = this.randomPlayerWaiting.gameId;
     if (
-      this.rooms.includes(gameId) &&
+      this.rooms.has(gameId) &&
       this.randomPlayerWaiting.id != client.id
     ) {
       const player = new User(client, username, gameId, client.id);
@@ -123,20 +124,18 @@ export class GameManager {
         this.randomPlayerWaiting,
         player
       );
-      this.games.push(game);
+      this.games.set(gameId, game);
       this.randomPlayerWaiting = {} as User;
       game.gameHandler();
     } else {
       client.emit("error", {
         message: "Game ID not Found",
-        errorCode: "404",
+        errorCode: 404,
       });
     }
   }
   createGameHandler(data: UsernamePayload, client: GameSocket) {
-    let pendingPlayer = this.pendingPlayers.find(
-      (player) => player.id === client.id
-    );
+    let pendingPlayer = this.findPendingPlayer(client.id);
     if (pendingPlayer) {
       this.server.to(pendingPlayer.gameId).emit("gameJoined", {
         username: pendingPlayer.username,
@@ -158,8 +157,8 @@ export class GameManager {
       message: "Waiting For Another Player To Join!",
       playersJoined: 1,
     });
-    this.pendingPlayers.push(pendingPlayer);
-    this.rooms.push(gameId);
+    this.pendingPlayers.set(gameId, pendingPlayer);
+    this.rooms.add(gameId);
   }
 
   joinGameHandler(data: JoinGamePayload, client: GameSocket) {
@@ -168,19 +167,19 @@ export class GameManager {
     const pendingPlayer =
       this.randomPlayerWaiting.gameId === gameId
         ? this.randomPlayerWaiting
-        : this.pendingPlayers.find((player) => player.gameId === gameId);
+        : this.pendingPlayers.get(gameId);
 
     if (!pendingPlayer) {
       client.emit("error", {
         message: "Game ID not Found",
-        errorCode: "404",
+        errorCode: 404,
       });
       return;
     }
     if (pendingPlayer.id === client.id) {
       client.emit("error", {
         message: "Cannot Join Your Own Game",
-        errorCode: "400",
+        errorCode: 400,
       });
       return;
     }
@@ -195,24 +194,18 @@ export class GameManager {
       playersJoined: 2,
     });
     const game = new Game(this.server, gameId, pendingPlayer, player);
-    this.games.push(game);
+    this.games.set(gameId, game);
     game.gameHandler();
-    this.pendingPlayers = this.pendingPlayers.filter(
-      (player) => player.gameId !== gameId
-    );
+    this.pendingPlayers.delete(gameId);
     if (this.randomPlayerWaiting.gameId === gameId) {
       this.randomPlayerWaiting = {} as User;
     }
   }
   closeGame(data: { gameId: string }) {
     const { gameId } = data;
-    if (this.rooms.includes(gameId)) {
-      this.rooms = this.rooms.filter((room) => room !== gameId);
-    }
-    this.games = this.games.filter((game) => game.id !== gameId);
-    this.pendingPlayers = this.pendingPlayers.filter(
-      (player) => player.gameId !== gameId
-    );
+    this.rooms.delete(gameId);
+    this.games.delete(gameId);
+    this.pendingPlayers.delete(gameId);
     console.log("Game", gameId, "closed");
   }
 }

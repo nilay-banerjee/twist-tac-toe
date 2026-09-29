@@ -28,7 +28,7 @@ Server (`cd server`):
 
 No test suite exists.
 
-Env vars (copy from each `.env_example`): client `VITE_BACKEND_URL`; server `PORT`, `BACKEND_URL`.
+Env vars (copy from each `.env_example`): client `VITE_BACKEND_URL`; server `PORT`, `BACKEND_URL`, `CLIENT_URL` (allowed CORS origin; unset means any origin).
 
 `npm audit` on the client reports 2 remaining advisories (esbuild → vite). They are **intentionally not fixed**: the fix is a breaking Vite 5→8 major bump, and the advisory (GHSA-67mh-4wv8-2f99) only affects the local dev server, not production builds. Do not "fix" these without an explicit decision to upgrade Vite.
 
