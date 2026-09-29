@@ -12,7 +12,7 @@ Three top-level directories, **not** an npm workspace (no root `package.json`) �
 
 - `client/` — React 18 + Vite + TypeScript, Tailwind + shadcn/ui + magicui, `socket.io-client`.
 - `server/` — Node + Express + Socket.IO, TypeScript compiled to `dist/`.
-- `common/types.ts` — types shared across both, including the Socket.IO event maps (`ClientToServerEvents`/`ServerToClientEvents`) that type the socket on each side. Imported by **relative path** (`../../common/types`), not a package. The server's `rootDir` is the repo root so it can compile this file.
+- `common/types.ts` — types shared across both, including the Socket.IO event maps (`ClientToServerEvents`/`ServerToClientEvents`) that type the socket on each side. `common/constants.ts` — shared values (`TURN_SECONDS`, `USERNAME_MAX_LENGTH`, `GAME_ID_LENGTH`). Both are imported by **relative path** (`../../common/...`), not a package. The server's `rootDir` is the repo root so it can compile them.
 
 ## Commands
 
@@ -25,36 +25,44 @@ Server (`cd server`):
 - `npm run dev` — `tsx watch src/index.ts`, runs TS directly with reload (no separate compile step).
 - `npm run build` — `tsc`, compiles `src/` → `dist/server/src/` (and `common/` → `dist/common/`).
 - `npm start` — `node dist/server/src/index.js`, runs the compiled build (production).
+- `npm test` — vitest. `test/engine.test.ts` and `test/bot.test.ts` cover the rules and the bot; `test/socket.test.ts` starts a real server on a random port (short timings via `createApp` options) and drives it with `socket.io-client`. When a test waits for a `board` event, filter for the one it expects: broadcasts from the previous move can arrive late.
 
-No test suite exists.
+The client has no tests.
 
 Env vars (copy from each `.env_example`): client `VITE_BACKEND_URL`; server `PORT`, `BACKEND_URL`, `CLIENT_URL` (allowed CORS origin; unset means any origin).
 
-`npm audit` on the client reports 2 remaining advisories (esbuild → vite). They are **intentionally not fixed**: the fix is a breaking Vite 5→8 major bump, and the advisory (GHSA-67mh-4wv8-2f99) only affects the local dev server, not production builds. Do not "fix" these without an explicit decision to upgrade Vite.
+`npm audit` on the client reports 4 remaining advisories. They are **intentionally not fixed**, and each needs a breaking major upgrade:
+- `vite` and `esbuild` (fix: Vite 5→8): they only affect the local dev server, not production builds.
+- `react-router` and `react-router-dom` (fix: React Router 6→7): an open redirect through a backslash in a `<Link>`/`navigate()` target, and SSR hydration. The app only navigates to paths it builds from validated game codes and has no SSR.
+
+Do not "fix" these without an explicit decision to do the major upgrade.
 
 ## Server architecture
 
-Single `GameManager` owns all matchmaking; each match is a `Game` instance.
+One `GameManager` owns matchmaking; each match is a `Game`.
 
-- **`index.ts`** — boots Express + Socket.IO, creates the one `GameManager`, and exports `removeGame()` (called by `Game.destroyGame()` to remove itself — note the circular import between `index.ts` and `Game.ts`).
-- **`GameManager.ts`** — routes socket events and matchmaking state: `rooms` (all active game IDs), `pendingPlayers` (created games awaiting a second player), `games` (running matches), and a single `randomPlayerWaiting` slot for quick-match. Handles `createGame`, `joinGame`, `joinRandomGame`, `disconnect`. Game IDs are 6-char uppercase (`generateUniqueGameID`). Once two players are present it constructs a `Game` and calls `game.gameHandler()`. On a dropped connection it waits `RECONNECT_GRACE_MS` (10s) before removing the player; Socket.IO connection state recovery (same socket id, missed room broadcasts replayed) lets a player who returns in time keep their game, and `reattach` moves their `User` and move listener onto the new socket object. An explicit client disconnect removes the player immediately.
-- **`Game.ts`** — one per match. Holds `board: string[]` (length-9, index = cell id 0–8) and two FIFO queues `queueX`/`queueO` that implement the twist: on a 3rd-already-present placement it `shift()`s the oldest index and clears that board cell. The server board is authoritative: after every change it broadcasts the full board plus whose turn it is (`board` event). `initGame` randomly assigns X/O + first turn, emits `init`, then the empty board. Turn/move gating via `isTurn` + `isValid`; `checkWin` scans 8 win patterns. A 15s inactivity timer (`TIMEOUT_DURATION`) emits `time` every 5s and, on timeout, awards the win to the waiting player and destroys the game.
-- **`User.ts`** — wraps a socket with `username`, `id` (= socket.id), `gameId`, `sign`.
-- **`validators.ts`** — zod schemas every incoming event payload is parsed with; malformed payloads are dropped before any handler runs. **`types.ts`** — `GameServer`/`GameSocket`, Socket.IO types bound to the shared event maps.
-- `Moves.ts` (`Move` class) and `lib/util.ts` (`createRoomId`) are vestigial — not used by the current game flow.
+- **`app.ts`** — `createApp(clientUrl, options)` builds Express + Socket.IO + the `GameManager` and returns `{ httpServer, io }`. `DEFAULT_OPTIONS` holds the timings (turn length, bot delay, reconnect grace, rematch window); tests pass shorter ones. **`index.ts`** only loads env and calls `listen`.
+- **`engine.ts`** — the rules as pure functions over `GameState` (`board`, each sign's marks oldest-first, `turn`): `applyMove` drops the mover's oldest mark when they already have `MAX_MARKS` (3), then places; `winningLine`; `legalMoves`; `nextToVanish`. A player's own oldest mark is still occupied, so they can't play on it.
+- **`bot.ts`** — `chooseMove(state, difficulty)`. All levels take an immediate win. `easy` otherwise avoids moves that allow an immediate loss; `medium` and `hard` use the same depth-8 negamax with alpha-beta (about 11 ms on an empty board) and random tie-breaks. What makes `hard` harder is in `Game.ts`: games against a hard bot send `fadingHidden: true` in `init` and always null `nextToVanish`, so the board never shows which mark fades next.
+- **`players.ts`** — `Human` (wraps a socket; `id` is the socket id) and `Bot` (no socket), as the `Player` union discriminated by `kind`.
+- **`Game.ts`** — one match. Assigns X/O at random, emits `init` to each human, then runs turns: every change broadcasts the full `board` (with whose turn it is, `nextToVanish` and `turnEndsInMs`). One `setTimeout` per turn ends the game on timeout; bot turns are scheduled after `botDelayMs`. `finish` emits the final board, then `win` (with `reason` and the winning `line`), then calls `onEnd`. `dispose()` removes move listeners and leaves the room.
+- **`GameManager.ts`** — `quickMatch` (one waiting player), `privateGames` (code → host), `games` (active) and `finished` (kept for `rematchWindowMs` so both players can ask for a rematch; against a bot it restarts at once). Game codes are 6 characters from `GAME_ID_ALPHABET` in `common/constants.ts`, which leaves out look-alikes (`0/O`, `1/I/L`, `2/Z`, `5/S`), drawn with `crypto.randomInt`. The Join input only accepts that alphabet; server validation stays at `[A-Z0-9]{6}` so a bad code still gets a "not found" reply instead of being dropped silently. `cancel` removes a player from waiting lists only; `leave` also forfeits an active game and closes the rematch window. On a dropped connection it waits `reconnectGraceMs` before calling `leave`; Socket.IO connection state recovery (same socket id, missed room broadcasts replayed) lets a player who returns in time keep their game, and `reattach` moves their `Human` and move listener onto the new socket object. An explicit client disconnect leaves immediately. It broadcasts the `online` count on every connect and disconnect.
+- **`validators.ts`** — zod schemas every incoming payload is parsed with; malformed payloads are dropped before any handler runs. **`types.ts`** — `GameServer`/`GameSocket`, Socket.IO types bound to the shared event maps.
 
 ### Socket.IO event contract (the real API)
 
 This event contract, not any HTTP endpoint, is the client/server interface:
-- Client → Server: `createGame`, `joinGame`, `joinRandomGame`, `move` (no ack; the next `board` broadcast is the confirmation).
-- Server → Client: `gameJoined`, `init`, `board`, `time`, `win`, `error`.
+- Client → Server: `createGame`, `joinGame`, `joinRandomGame`, `playBot`, `move` (`{ cell: 0-8 }`, no ack; the next `board` broadcast is the confirmation), `cancel`, `leave`, `rematch`.
+- Server → Client: `gameJoined` (waiting for an opponent), `init`, `board`, `win`, `rematchOffered`, `rematchUnavailable`, `online`, `error`.
 
 Payload shapes and both event maps live in `common/types.ts`.
 
 ## Client architecture
 
-- **`App.tsx` is the hub.** It owns *all* game state (username, sign, and the `gameJoined`/`board`/`win`/`time` event objects; whose turn it is comes from `board.turnId`) and registers every socket listener, passing state down to routed pages as props. Pages emit socket events but read game state from `App`.
-- **`socket.tsx`** — one shared `socket.io-client` instance pointed at `VITE_BACKEND_URL`.
-- **Pages** (`src/components/pages/`): `Landing` → `Create` (emits `createGame`/`joinRandomGame`, shows the shareable code, navigates to `/game/:id` once 2 players join) / `Join` (6-char code entry) / `Game`.
-- **`Game.tsx`** renders the 3×3 grid from the server's `board` array (React state, no DOM writes); clicking cell `i` emits `move` with `String(i)`. If the socket reconnects without recovering its session, it tells the player the game ended and goes home.
+- **`App.tsx` is the hub.** It owns the username, the waiting state, the online count and the game `Session` (`init`, latest `board` with a local `turnEndsAt`, `win`, rematch state), registers every socket listener once, and passes state down as props. `FollowGame` navigates to `/game/:id` whenever an `init` arrives, which covers private games, quick match, bot games and rematches.
+- **`socket.tsx`** — one shared `socket.io-client` instance pointed at `VITE_BACKEND_URL`. It connects on import; never call `socket.connect()` yourself, because a second connect mid-handshake makes the server force-close the connection.
+- **Pages** (`src/components/pages/`): `Landing` (quick match, bot difficulty picker, create/join, rules) → `Create` (private invite link or quick-match wait with a bot offer after 10s; sends `cancel` on unmount and re-sends its request if the socket reconnects without recovery) / `Join` (6-character code, shows server errors) / `Game`.
+- **`Game.tsx`** renders player cards (`PlayerCard`, countdown from the board's deadline), the `Board` and a `ResultPanel` (rematch, home). A URL that doesn't match the current session shows "This game isn't available"; a reconnect that fails to recover sends the player home.
+- **`Board.tsx`** — 3×3 buttons drawn from the server's board. The mark in `nextToVanish` is faded with a dashed ring (the game's twist), the winning line is tinted, and marks animate in and out with framer-motion (`MotionConfig reducedMotion="user"` in `App`). X is amber and O violet (`lib/signs.ts`).
+- **`lib/username.ts`** — random two-word names (`SneakyOtter`), saved in `localStorage`; the name is editable in the `Appbar`.
 - UI building blocks: shadcn/ui primitives in `components/ui/`, animated components in `components/magicui/`. Path alias `@/` → `client/src/` (configured in both `vite.config.ts` and `tsconfig`).
