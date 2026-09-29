@@ -7,7 +7,7 @@ import { GameHeading } from "@/components/GameHeading"
 import { useEffect } from "react"
 import { toast } from "sonner"
 
-import o_x from "../../assets/o_x.gif"
+import o_x from "../../assets/o_x.mp4"
 import {
     Tooltip,
     TooltipContent,
@@ -58,9 +58,13 @@ export function Landing() {
                         className="flex items-center justify-center rounded-lg border bg-background md:h-[350px] md:w-[350px] md:shadow-xl"
                         color={["#A07CFE", "#FE8FB5", "#FFBE7B"]}
                     >
-                        <img
+                        <video
                             src={o_x}
-                            alt="twist_tac_toe.gif"
+                            aria-label="Twist-Tac-Toe gameplay demo"
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
                             className="h-[350px] w-[350px] p-6 invert dark:invert-0 md:p-4"
                         />
                     </ShineBorder>

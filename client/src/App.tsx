@@ -9,32 +9,25 @@ import { Create } from "@/components/pages/Create"
 import { Join } from "@/components/pages/Join"
 import { socket } from "./socket"
 import {
+    BoardEventType,
     GameJoinedEventType,
     InitEventType,
-    MoveEventType,
-    RemoveEventType,
     TimeEventType,
     WinEventType,
 } from "../../common/types"
 
+const EMPTY_BOARD: BoardEventType = { board: Array(9).fill(""), turnId: "" }
+
 function App() {
     const [username, setUsername] = useState("")
     const [sign, setSign] = useState("")
-    const [turn, setTurn] = useState(false)
     const [gameJoinedEvents, setGameJoinedEvents] = useState<
         GameJoinedEventType[]
     >([])
     const [timeEvent, setTimeEvent] = useState<TimeEventType>({
         lastMoveTimeInSeconds: 0,
     })
-    const [moveEvent, setMoveEvent] = useState<MoveEventType>({
-        move: "",
-        id: "",
-        username: "",
-    })
-    const [removeEvent, setRemoveEvent] = useState<RemoveEventType>({
-        move: "",
-    })
+    const [boardEvent, setBoardEvent] = useState<BoardEventType>(EMPTY_BOARD)
     const [winEvent, setWinEvent] = useState<WinEventType>({
         winner: "",
         id: "",
@@ -47,14 +40,9 @@ function App() {
     }, [])
     function resetGame() {
         setWinEvent({ winner: "", id: "", message: "", timeout: false })
-        setMoveEvent({
-            move: "",
-            id: "",
-            username: "",
-        })
+        setBoardEvent(EMPTY_BOARD)
         setTimeEvent({ lastMoveTimeInSeconds: 0 })
         setSign("")
-        setTurn(false)
     }
     function gameJoinedHandler(data: GameJoinedEventType) {
         if (gameJoinedEvents.length === 0) resetGame()
@@ -67,19 +55,10 @@ function App() {
                 console.log("Sign Updated  from ", sign, "to ", data.sign)
                 return data.sign
             })
-            if (data.sign === "X") setTurn(true)
-            else if (data.sign === "O") setTurn(false)
         }
     }
-    function moveHandler(data: MoveEventType) {
-        if (socket.id !== data.id) {
-            setMoveEvent({ ...data })
-            setTurn((turn) => !turn)
-        }
-    }
-    function removeHandler(data: RemoveEventType) {
-        console.log("Remove", data)
-        setRemoveEvent({ ...data })
+    function boardHandler(data: BoardEventType) {
+        setBoardEvent(data)
     }
     function winHandler(data: WinEventType) {
         setWinEvent(data)
@@ -96,7 +75,7 @@ function App() {
         return () => {
             socket.off("time", timeHandler)
         }
-    }, [gameJoinedEvents, moveEvent])
+    }, [gameJoinedEvents, boardEvent])
     useEffect(() => {
         socket.on("gameJoined", gameJoinedHandler)
         socket.on("init", initHandler)
@@ -106,13 +85,11 @@ function App() {
         }
     }, [gameJoinedEvents])
     useEffect(() => {
-        socket.on("move", moveHandler)
-        socket.on("remove", removeHandler)
+        socket.on("board", boardHandler)
         return () => {
-            socket.off("move", moveHandler)
-            socket.off("remove", removeHandler)
+            socket.off("board", boardHandler)
         }
-    }, [moveEvent])
+    }, [])
     useEffect(() => {
         socket.on("win", winHandler)
 
@@ -170,9 +147,8 @@ function App() {
                             element={
                                 <Game
                                     sign={sign}
-                                    moveEvent={moveEvent}
-                                    removeEvent={removeEvent}
-                                    turnState={[turn, setTurn]}
+                                    board={boardEvent.board}
+                                    turn={boardEvent.turnId === socket.id}
                                     winEvent={winEvent}
                                     timeEvent={timeEvent}
                                 />

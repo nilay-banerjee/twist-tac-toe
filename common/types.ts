@@ -11,11 +11,6 @@ export interface MovePayload {
   move: string;
 }
 
-export interface MoveAckType {
-  message: string;
-  status: number;
-}
-
 export interface GameJoinedEventType {
   username: string;
   gameId: string;
@@ -30,14 +25,9 @@ export interface InitEventType {
   id: string;
 }
 
-export interface MoveEventType {
-  move: string;
-  id: string;
-  username: string;
-}
-
-export interface RemoveEventType {
-  move: string;
+export interface BoardEventType {
+  board: string[];
+  turnId: string;
 }
 
 export interface TimeEventType {
@@ -60,14 +50,13 @@ export interface ClientToServerEvents {
   createGame: (data: UsernamePayload) => void;
   joinGame: (data: JoinGamePayload) => void;
   joinRandomGame: (data: UsernamePayload) => void;
-  move: (data: MovePayload, callback: (response: MoveAckType) => void) => void;
+  move: (data: MovePayload) => void;
 }
 
 export interface ServerToClientEvents {
   gameJoined: (data: GameJoinedEventType) => void;
   init: (data: InitEventType) => void;
-  move: (data: MoveEventType) => void;
-  remove: (data: RemoveEventType) => void;
+  board: (data: BoardEventType) => void;
   time: (data: TimeEventType) => void;
   win: (data: WinEventType) => void;
   error: (data: ErrorEventType) => void;

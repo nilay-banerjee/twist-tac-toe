@@ -4,8 +4,11 @@ import { GameServer, GameSocket } from "./types";
 import { User } from "./User";
 import { joinGameSchema, usernameSchema } from "./validators";
 
+export const RECONNECT_GRACE_MS = 10_000;
+
 export class GameManager {
   private server: GameServer;
+  private leaveTimers = new Map<string, NodeJS.Timeout>();
   private randomPlayerWaiting: User;
   private pendingPlayers = new Map<string, User>();
   private games = new Map<string, Game>();
@@ -31,19 +34,50 @@ export class GameManager {
     );
   }
 
+  private removePlayer(clientId: string) {
+    if (this.randomPlayerWaiting.id === clientId) {
+      this.rooms.delete(this.randomPlayerWaiting.gameId);
+      this.randomPlayerWaiting = {} as User;
+    }
+    const pendingPlayer = this.findPendingPlayer(clientId);
+    if (pendingPlayer) this.closeGame({ gameId: pendingPlayer.gameId });
+    [...this.games.values()]
+      .filter((game) => game.isPlayer(clientId))
+      .forEach((game) => game.playerLeft(clientId));
+  }
+
+  private reattach(client: GameSocket) {
+    clearTimeout(this.leaveTimers.get(client.id));
+    this.leaveTimers.delete(client.id);
+    if (this.randomPlayerWaiting.id === client.id) {
+      this.randomPlayerWaiting.client = client;
+    }
+    const pendingPlayer = this.findPendingPlayer(client.id);
+    if (pendingPlayer) pendingPlayer.client = client;
+    [...this.games.values()]
+      .filter((game) => game.isPlayer(client.id))
+      .forEach((game) => game.reattach(client));
+  }
+
   handleConnection(server: GameServer, client: GameSocket) {
     this.server = server;
-    client.on("disconnect", () => {
-      if (this.randomPlayerWaiting.id === client.id) {
-        this.rooms.delete(this.randomPlayerWaiting.gameId);
-        this.randomPlayerWaiting = {} as User;
+    if (client.recovered) {
+      console.log(client.id, "reconnected");
+      this.reattach(client);
+    }
+    client.on("disconnect", (reason) => {
+      console.log(client.id, "disconnected:", reason);
+      if (reason === "client namespace disconnect") {
+        this.removePlayer(client.id);
+        return;
       }
-      const pendingPlayer = this.findPendingPlayer(client.id);
-      if (pendingPlayer) this.closeGame({ gameId: pendingPlayer.gameId });
-      [...this.games.values()]
-        .filter((game) => game.isPlayer(client.id))
-        .forEach((game) => game.playerLeft(client.id));
-      console.log(client.id, "disconnected");
+      this.leaveTimers.set(
+        client.id,
+        setTimeout(() => {
+          this.leaveTimers.delete(client.id);
+          this.removePlayer(client.id);
+        }, RECONNECT_GRACE_MS)
+      );
     });
     client.on("createGame", (data: unknown) => {
       const payload = usernameSchema.safeParse(data);

@@ -3,7 +3,7 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import { ClientToServerEvents, ServerToClientEvents } from "../../common/types";
-import { GameManager } from "./GameManager";
+import { GameManager, RECONNECT_GRACE_MS } from "./GameManager";
 import cors from "cors";
 
 const PORT = Number(process.env.PORT) || 8080;
@@ -17,6 +17,7 @@ app.use(cors({ origin: CLIENT_URL }));
 const server = http.createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
   maxHttpBufferSize: 10_000,
+  connectionStateRecovery: { maxDisconnectionDuration: RECONNECT_GRACE_MS },
   cors: {
     origin: CLIENT_URL,
     methods: ["GET", "POST"],
