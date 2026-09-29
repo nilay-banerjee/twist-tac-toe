@@ -51,6 +51,13 @@ export class GameManager {
         );
         this.randomPlayerWaiting = {} as User;
       }
+      const pendingPlayer = this.pendingPlayers.find(
+        (player) => player.id === client.id
+      );
+      if (pendingPlayer) this.closeGame({ gameId: pendingPlayer.gameId });
+      this.games
+        .filter((game) => game.isPlayer(client.id))
+        .forEach((game) => game.playerLeft(client.id));
       console.log(`${client.id} Disconnected\n`);
     });
     client.on("createGame", (data) => {

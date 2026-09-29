@@ -3,6 +3,10 @@ import { User } from "./User";
 import { removeGame } from ".";
 import { MovePayload, moveSchema } from "./validators";
 const TIMEOUT_DURATION = 15;
+type MoveListener = (
+  data: unknown,
+  callback: (response: { message: string; status: number }) => void
+) => void;
 export class Game {
   server: Server;
   id: string;
@@ -14,6 +18,7 @@ export class Game {
   private queueO: number[];
   private lastMoveTime: number;
   private intervalID: NodeJS.Timeout;
+  private moveListeners = new Map<User, MoveListener>();
   constructor(server: Server, id: string, player1: User, player2: User) {
     this.server = server;
     this.turn = player1;
@@ -71,6 +76,10 @@ export class Game {
   destroyGame() {
     console.log("Game destroyed", this.id);
     clearInterval(this.intervalID);
+    for (const [player, listener] of this.moveListeners) {
+      player.client.off("move", listener);
+    }
+    this.moveListeners.clear();
     removeGame(this.id);
     this.player1.client.leave(this.id);
     this.player2.client.leave(this.id);
@@ -107,32 +116,31 @@ export class Game {
     }
   }
   gameHandler() {
-    try {
-      this.player1.client.on("move", (data, callback) => {
+    for (const player of [this.player1, this.player2]) {
+      const listener: MoveListener = (data, callback) => {
         const payload = moveSchema.safeParse(data);
         if (!payload.success) return;
-        if (this.moveHandler(payload.data, this.player1)) {
+        if (this.moveHandler(payload.data, player)) {
           try {
             callback({ message: "Move Successful", status: 200 });
           } catch (e) {
             console.error(e);
           }
         }
-      });
-      this.player2.client.on("move", (data, callback) => {
-        const payload = moveSchema.safeParse(data);
-        if (!payload.success) return;
-        if (this.moveHandler(payload.data, this.player2)) {
-          try {
-            callback({ message: "Move Successful", status: 200 });
-          } catch (e) {
-            console.error(e);
-          }
-        }
-      });
-    } catch (e) {
-      console.log(e);
+      };
+      player.client.on("move", listener);
+      this.moveListeners.set(player, listener);
     }
+  }
+  playerLeft(id: string) {
+    const winner = id === this.player1.id ? this.player2 : this.player1;
+    this.server.to(this.id).emit("win", {
+      winner: winner.username,
+      id: winner.client.id,
+      message: `Winner is ${winner.username} ${winner.sign}, opponent left`,
+      timeout: false,
+    });
+    this.destroyGame();
   }
   checkWin() {
     console.log(this.board);
