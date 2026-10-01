@@ -71,9 +71,7 @@ export function Create({
                         </h1>
                         <Loading />
                         <p className="text-sm text-muted-foreground">
-                            {online <= 1
-                                ? "You're the only player online right now."
-                                : `${online} players online`}
+                            {online} players online
                         </p>
                     </>
                 ) : (

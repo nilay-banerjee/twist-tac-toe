@@ -58,7 +58,7 @@ export function Join({ username }: { username: string }) {
         <main className="mx-auto flex max-w-md flex-col items-center gap-6 px-4 pb-12">
             <GameHeading compact />
             <section className="flex w-full flex-col items-center gap-4 rounded-xl border border-border p-5 text-center">
-                <h1 className="text-xl font-bold">Join a game</h1>
+                <h1 className="text-xl font-bold">Join a room</h1>
                 <p className="text-muted-foreground">
                     Enter the code your friend sent you. Codes never use 0, O,
                     1, I, L, 2, Z, 5 or S.
@@ -74,7 +74,7 @@ export function Join({ username }: { username: string }) {
                     />
                 </div>
                 <Button onClick={joinGame} disabled={isLoading}>
-                    Join game
+                    Join room
                 </Button>
                 {isLoading && <Loading />}
                 {errorMsg && (

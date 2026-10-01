@@ -73,10 +73,10 @@ export function Landing({
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <Button asChild variant="outline" size="lg">
-                            <Link to="/create">Create game</Link>
+                            <Link to="/create">Create room</Link>
                         </Button>
                         <Button asChild variant="outline" size="lg">
-                            <Link to="/join">Join game</Link>
+                            <Link to="/join">Join room</Link>
                         </Button>
                     </div>
                 </section>

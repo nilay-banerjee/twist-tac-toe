@@ -11,6 +11,9 @@ import { GameServer, GameSocket } from "./types";
 import { joinGameSchema, playBotSchema, usernameSchema } from "./validators";
 
 const DEFAULT_USERNAME = "Player";
+// The shown online count is padded so a quiet lobby doesn't look empty.
+const ONLINE_PADDING_MIN = 10;
+const ONLINE_PADDING_MAX = 13;
 
 export interface ServerOptions extends GameTimings {
   reconnectGraceMs: number;
@@ -34,6 +37,7 @@ export class GameManager {
   private games = new Map<string, Game>();
   private finished = new Map<string, Finished>();
   private leaveTimers = new Map<string, NodeJS.Timeout>();
+  private onlinePadding = randomInt(ONLINE_PADDING_MIN, ONLINE_PADDING_MAX + 1);
 
   constructor(
     private server: GameServer,
@@ -112,7 +116,7 @@ export class GameManager {
     if (!host) {
       this.sendError(
         client,
-        "No game with that code is waiting for a player.",
+        "No room with that code is waiting for a player.",
         404
       );
       return;
@@ -120,7 +124,7 @@ export class GameManager {
     if (host.id === client.id) {
       this.sendError(
         client,
-        "That's your own game. Send the code to a friend instead.",
+        "That's your own room. Send the code to a friend instead.",
         400
       );
       return;
@@ -263,7 +267,13 @@ export class GameManager {
   }
 
   private broadcastOnline() {
-    this.server.emit("online", { count: this.server.of("/").sockets.size });
+    this.onlinePadding = Math.min(
+      ONLINE_PADDING_MAX,
+      Math.max(ONLINE_PADDING_MIN, this.onlinePadding + randomInt(-1, 2))
+    );
+    this.server.emit("online", {
+      count: this.server.of("/").sockets.size + this.onlinePadding,
+    });
   }
 
   private sendWaiting(client: GameSocket, gameId: string, username: string) {
