@@ -1,13 +1,13 @@
 import WordRotate from "@/components/magicui/word-rotate"
 import { Link } from "react-router-dom"
-import { cn } from "@/lib/utils"
+import { cn, focusRing } from "@/lib/utils"
 
 export function GameHeading({ compact = false }: { compact?: boolean }) {
     return (
         <Link
             to="/"
             aria-label="Twist Tac Toe, home"
-            className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className={cn("rounded-md", focusRing)}
         >
             <div
                 className={cn(

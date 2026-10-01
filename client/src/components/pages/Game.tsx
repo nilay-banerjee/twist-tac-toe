@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react"
+import { Page } from "@/components/Page"
+import { Panel, PanelTitle } from "@/components/Panel"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import { Board } from "@/components/Board"
@@ -76,19 +78,17 @@ export function Game({
 
     if (!game || game.gameId !== gameId) {
         return (
-            <main className="mx-auto flex max-w-md flex-col items-center gap-6 px-4 pb-12">
+            <Page>
                 <GameHeading compact />
-                <section className="flex w-full flex-col items-center gap-3 rounded-xl border border-border p-5 text-center">
-                    <h1 className="text-xl font-bold">
-                        This game isn't available
-                    </h1>
+                <Panel>
+                    <PanelTitle>This game isn't available</PanelTitle>
                     <p className="text-muted-foreground">
-                        It has ended, or this page was reloaded. Reloading
-                        starts a new connection, so the game can't continue.
+                        It has ended, or this page was reloaded. Picking up a
+                        game after a reload is coming soon.
                     </p>
                     <Button onClick={() => navigate("/")}>Home</Button>
-                </section>
-            </main>
+                </Panel>
+            </Page>
         )
     }
 
@@ -106,7 +106,7 @@ export function Game({
           : `${game.opponent.username}'s turn`
 
     return (
-        <main className="mx-auto flex w-full max-w-xl flex-col items-center gap-4 px-4 pb-8">
+        <Page width="game">
             <GameHeading compact />
             <div className="grid w-full grid-cols-2 gap-3">
                 <PlayerCard
@@ -154,6 +154,6 @@ export function Game({
                     </Button>
                 </>
             )}
-        </main>
+        </Page>
     )
 }

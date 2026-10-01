@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react"
+import { Page } from "@/components/Page"
+import { Panel, PanelTitle } from "@/components/Panel"
 import { useNavigate } from "react-router-dom"
 import { Share2 } from "lucide-react"
 import { socket } from "@/socket"
@@ -61,14 +63,12 @@ export function Create({
     const canShare = typeof navigator.share === "function"
 
     return (
-        <main className="mx-auto flex max-w-md flex-col items-center gap-6 px-4 pb-12">
+        <Page>
             <GameHeading compact />
-            <section className="flex w-full flex-col items-center gap-4 rounded-xl border border-border p-5 text-center">
+            <Panel>
                 {randomGame ? (
                     <>
-                        <h1 className="text-xl font-bold">
-                            Looking for an opponent
-                        </h1>
+                        <PanelTitle>Looking for an opponent</PanelTitle>
                         <Loading />
                         <p className="text-sm text-muted-foreground">
                             {online} players online
@@ -76,7 +76,7 @@ export function Create({
                     </>
                 ) : (
                     <>
-                        <h1 className="text-xl font-bold">Invite a friend</h1>
+                        <PanelTitle>Invite a friend</PanelTitle>
                         {gameId ? (
                             <>
                                 <p className="text-muted-foreground">
@@ -114,18 +114,18 @@ export function Create({
                         )}
                     </>
                 )}
-            </section>
+            </Panel>
             {randomGame && offerBot && (
-                <section className="flex w-full flex-col gap-3 rounded-xl border border-border p-4">
-                    <h2 className="font-bold">
+                <Panel layout="stacked">
+                    <PanelTitle size="small">
                         Nobody free? Play the computer instead
-                    </h2>
+                    </PanelTitle>
                     <DifficultyPicker onPick={playBot} />
-                </section>
+                </Panel>
             )}
             <Button variant="ghost" onClick={() => navigate("/")}>
                 Cancel
             </Button>
-        </main>
+        </Page>
     )
 }

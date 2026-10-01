@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react"
+import { Page } from "@/components/Page"
+import { Panel, PanelTitle } from "@/components/Panel"
 import { useParams } from "react-router-dom"
 import { socket } from "@/socket"
 import { GameHeading } from "@/components/GameHeading"
@@ -55,13 +57,12 @@ export function Join({ username }: { username: string }) {
     }
 
     return (
-        <main className="mx-auto flex max-w-md flex-col items-center gap-6 px-4 pb-12">
+        <Page>
             <GameHeading compact />
-            <section className="flex w-full flex-col items-center gap-4 rounded-xl border border-border p-5 text-center">
-                <h1 className="text-xl font-bold">Join a room</h1>
+            <Panel>
+                <PanelTitle>Join a room</PanelTitle>
                 <p className="text-muted-foreground">
-                    Enter the code your friend sent you. Codes never use 0, O,
-                    1, I, L, 2, Z, 5 or S.
+                    Enter the code your friend sent you.
                 </p>
                 <div
                     onKeyDown={(e) => {
@@ -82,7 +83,7 @@ export function Join({ username }: { username: string }) {
                         {errorMsg}
                     </p>
                 )}
-            </section>
-        </main>
+            </Panel>
+        </Page>
     )
 }

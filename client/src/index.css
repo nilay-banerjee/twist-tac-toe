@@ -99,3 +99,29 @@
         @apply font-roboto;
     }
 }
+
+@layer components {
+    .edge-gradient {
+        position: relative;
+    }
+    .edge-gradient::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        padding: 1px;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #ffaa40, #9c40ff);
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        opacity: 0.45;
+        transition: opacity 200ms ease;
+        pointer-events: none;
+    }
+    .edge-gradient:hover::before,
+    .edge-gradient:focus-visible::before {
+        opacity: 1;
+    }
+}

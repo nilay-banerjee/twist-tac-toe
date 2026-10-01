@@ -1,3 +1,5 @@
+import { House, RotateCcw } from "lucide-react"
+import { Panel } from "@/components/Panel"
 import SparklesText from "@/components/magicui/sparkles-text"
 import { Button } from "@/components/ui/button"
 import { RematchState } from "@/App"
@@ -26,7 +28,7 @@ export function ResultPanel({
 }) {
     const youWon = win.winnerId === youId
     return (
-        <div className="flex w-full flex-col items-center gap-3 rounded-xl border border-border p-4 text-center">
+        <Panel>
             {youWon ? (
                 <SparklesText className="text-3xl md:text-4xl" text="You won" />
             ) : (
@@ -43,13 +45,15 @@ export function ResultPanel({
             <div className="flex gap-3">
                 {!rematch.unavailable && (
                     <Button onClick={onRematch} disabled={rematch.requested}>
+                        <RotateCcw className="mr-2 size-4" />
                         {rematchLabel(rematch, opponent)}
                     </Button>
                 )}
                 <Button variant="outline" onClick={onHome}>
+                    <House className="mr-2 size-4" />
                     Home
                 </Button>
             </div>
-        </div>
+        </Panel>
     )
 }

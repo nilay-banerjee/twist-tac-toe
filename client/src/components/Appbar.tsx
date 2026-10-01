@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react"
+import { cn, focusRing } from "@/lib/utils"
 import { Pencil } from "lucide-react"
 import { ModeToggle } from "@/components/util/mode-toggle"
 import { USERNAME_MAX_LENGTH } from "../../../common/constants"
@@ -23,7 +24,10 @@ export function Appbar({
             {draft === null ? (
                 <button
                     onClick={() => setDraft(username)}
-                    className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={cn(
+                        "flex items-center gap-2 rounded-md px-2 py-1 hover:bg-secondary",
+                        focusRing,
+                    )}
                     aria-label={`Playing as ${username}. Change name`}
                 >
                     <span className="text-muted-foreground">Playing as</span>
@@ -43,7 +47,10 @@ export function Appbar({
                         onChange={(e) => setDraft(e.target.value)}
                         onBlur={save}
                         onKeyDown={(e) => e.key === "Escape" && setDraft(null)}
-                        className="w-44 rounded-md border border-input bg-background px-2 py-1 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className={cn(
+                            "w-44 rounded-md border border-input bg-background px-2 py-1 font-bold",
+                            focusRing,
+                        )}
                     />
                 </form>
             )}

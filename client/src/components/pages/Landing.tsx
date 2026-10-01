@@ -1,6 +1,9 @@
 import { useEffect } from "react"
+import { Page } from "@/components/Page"
+import { Panel, PanelTitle } from "@/components/Panel"
+import { cn, focusRing } from "@/lib/utils"
 import { Link } from "react-router-dom"
-import { Bot, ChevronRight } from "lucide-react"
+import { Bot, ChevronRight, DoorOpen, LogIn } from "lucide-react"
 import { toast } from "sonner"
 import ShineBorder from "@/components/magicui/shine-border"
 import AnimatedGradientText from "@/components/magicui/animated-gradient-text"
@@ -31,7 +34,7 @@ export function Landing({
     }
 
     return (
-        <main className="mx-auto flex max-w-5xl flex-col items-center gap-8 px-4 pb-12 md:gap-12">
+        <Page width="wide">
             <div className="flex flex-col items-center gap-3 text-center">
                 <GameHeading />
                 <p className="text-lg text-muted-foreground md:text-2xl">
@@ -46,7 +49,7 @@ export function Landing({
                     <div className="flex flex-col items-center gap-2">
                         <Link
                             to="/create_random"
-                            className="w-full rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className={cn("w-full rounded-2xl", focusRing)}
                         >
                             <AnimatedGradientText className="w-full max-w-none justify-center py-3">
                                 <span className="text-2xl">🎮</span>
@@ -64,19 +67,25 @@ export function Landing({
                             </p>
                         )}
                     </div>
-                    <div className="flex flex-col gap-3 rounded-xl border border-border p-4">
-                        <h2 className="flex items-center gap-2 font-bold">
+                    <Panel layout="stacked">
+                        <PanelTitle size="small">
                             <Bot className="size-5" />
                             Play the computer
-                        </h2>
+                        </PanelTitle>
                         <DifficultyPicker onPick={playBot} />
-                    </div>
+                    </Panel>
                     <div className="grid grid-cols-2 gap-3">
-                        <Button asChild variant="outline" size="lg">
-                            <Link to="/create">Create room</Link>
+                        <Button asChild variant="cta" size="lg">
+                            <Link to="/create">
+                                <DoorOpen className="mr-2 size-4" />
+                                Create room
+                            </Link>
                         </Button>
-                        <Button asChild variant="outline" size="lg">
-                            <Link to="/join">Join room</Link>
+                        <Button asChild variant="cta" size="lg">
+                            <Link to="/join">
+                                <LogIn className="mr-2 size-4" />
+                                Join room
+                            </Link>
                         </Button>
                     </div>
                 </section>
@@ -103,6 +112,6 @@ export function Landing({
                 )}
             </div>
             <HowToPlay />
-        </main>
+        </Page>
     )
 }
